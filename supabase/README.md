@@ -2,7 +2,7 @@
 
 El juego conserva progreso, coins y desafíos locales sin Supabase. La cuenta recuperable, wallet online y rankings con premios requieren activar V2. No hacen falta credenciales para ejecutar los tests o generar el build.
 
-La [guía de integraciones](../docs/INTEGRATIONS.md) reúne el paso a paso de Supabase, Netlify Functions, Google H5 y PayPal. No se aplicó ninguna migración a un proyecto remoto durante esta implementación.
+La [guía de integraciones](../docs/INTEGRATIONS.md) reúne el paso a paso de Supabase, Netlify Functions, Google H5 y PayPal. El 3 de octubre de 2026 se aplicaron las tres migraciones al proyecto autorizado `nmdesnqgpsbtcoluyajh`, inicialmente vacío. No se modificó ningún otro proyecto.
 
 ## Configuración y migraciones
 
@@ -10,6 +10,7 @@ La [guía de integraciones](../docs/INTEGRATIONS.md) reúne el paso a paso de Su
 2. Aplicar solamente las migraciones pendientes, en este orden:
    - [V1: perfiles, resultados y desafíos](migrations/20261003021023_tower_backend.sql).
    - [V2: economía, tickets, rankings y pagos](migrations/20261003200135_tower_economy_v2.sql).
+   - [Índices de claves foráneas](migrations/20261003221035_tower_economy_indexes.sql).
 3. Respaldar un proyecto con datos y comprobar su historial antes de aplicar SQL. No repetir una migración existente. Los archivos se crearon con `supabase migration new` usando CLI 2.119.0; no equivalen a una migración aplicada en producción.
 4. Mantener `public` en Data API y dejar `tower_private` y `tower_economy` fuera de los schemas expuestos. Verificar grants, RLS y Database Advisors en el proyecto real.
 5. Configurar Build en Netlify y reconstruir:
@@ -25,7 +26,7 @@ VITE_PAYPAL_ENABLED=false
 
 `VITE_SUPABASE_PUBLISHABLE_KEY` tiene prioridad; `VITE_SUPABASE_ANON_KEY` es compatible cuando no se usa publishable. La URL debe ser HTTPS, sin credenciales, query, fragmento ni ruta de API; HTTP solo se admite en localhost. El cliente rechaza claves secretas y JWT con otro rol, pero cualquier `VITE_*` se incorpora al frontend: nunca incluir `service_role`, `sb_secret_...`, contraseñas ni access tokens. [Claves públicas](https://supabase.com/docs/guides/api/api-keys).
 
-La economía también requiere variables con alcance **Functions**, sin prefijo `VITE_`:
+La economía también requiere variables utilizadas por **Functions**, sin prefijo `VITE_`. En el sitio actual están disponibles en todos los alcances y contextos por autorización explícita del titular:
 
 ```dotenv
 SUPABASE_URL=https://TU-PROYECTO.supabase.co
@@ -37,10 +38,26 @@ SERVER_RANKINGS_ENABLED=false
 SERVER_RANKING_PERIODS=daily
 SERVER_AD_REWARDS_ENABLED=false
 SERVER_PAYPAL_ENABLED=false
-SERVER_OBJECT_CATALOG=extended-24
+SERVER_OBJECT_CATALOG=extended-30
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` es el fallback legacy del secreto. No guardar estos valores en Git, `netlify.toml`, HTML, logs ni assets. Usar proyectos y secretos distintos en pruebas y producción. Vite dev/preview no ejecuta Netlify Functions.
+
+Estado actual: `SUPABASE_SECRET_KEY` y `REPLAY_WORKER_SECRET` están guardadas como variables estándar, con `is_secret:false`, tras autorización explícita para mantener Free y utilizar todos los alcances y contextos. El readback oficial confirmó 24 variables y ambos valores exactos sin mostrarlos. Están disponibles para builds, functions, post_processing y runtime, también en previews; el código actual las lee en Functions. No usar estas credenciales de producción para pruebas económicas en previews. No se cambió el plan ni los flags: cuenta, economía, rankings con premios, publicidad y compras siguen apagados; SMTP/OTP y replay alojado siguen pendientes. El rechazo anterior HTTP 403 afectó a alcances específicos; no demuestra que el marcado `is_secret` por sí solo requiera Pro. El deploy `6ac19110c15b35c484fe3acf` está publicado y su QA confirmó ausencia de claves privadas en el bundle y servicios apagados; el detalle está en [VALIDATION.md](../VALIDATION.md).
+
+## Historial reconciliado
+
+El MCP registró versiones distintas de los archivos locales. Se verificó que los tres SQL coincidían exactamente en bytes y MD5, y se corrigieron únicamente las versiones del historial en una transacción con guards de nombres, contenido y destinos ausentes. Se conservaron SQL y metadata; no se reejecutaron migraciones ni se modificaron tablas o datos del juego. Este cambio tiene el mismo alcance de metadata que [migration repair](https://supabase.com/docs/reference/cli/supabase-migration-repair).
+
+| Migración | Versión MCP inicial | Versión local/remota final |
+| --- | --- | --- |
+| `tower_backend` | `20261003220832` | `20261003021023` |
+| `tower_economy_v2` | `20261003220847` | `20261003200135` |
+| `tower_economy_indexes` | `20261003221120` | `20261003221035` |
+
+La [operación auditada](tests/migration-history-repair.sql) es específica de este historial y rechaza una repetición. No incorporarla a `migrations/`. Antes de cualquier futuro `db push`, ejecutar `supabase migration list --project-ref nmdesnqgpsbtcoluyajh` y comprobar que ambas columnas coinciden; no repetir ni renombrar los archivos existentes.
+
+Verificación del 3 de octubre: el CLI autenticado confirmó las tres versiones alineadas y `supabase db push --dry-run --skip-vault --project-ref nmdesnqgpsbtcoluyajh` devolvió `upToDate=true`, sin migraciones, seeds ni roles pendientes.
 
 ## Activación por etapas
 
@@ -88,13 +105,21 @@ El juego local continúa cuando Auth, cuenta, anuncios o pagos no responden. No 
 
 V1 solo valida rangos, coherencia y límites por identidad; un cliente modificado puede inventar resultados compatibles. V2 comprueba el resultado físico de los eventos, pero no identifica personas ni impide bots, cuentas múltiples o búsqueda automatizada. No constituye anti-cheat completo. Configurar límites reales de Auth y evaluar protección contra abuso antes de abrir premios o compras.
 
-## Verificación local y pendientes
+## Verificación local, alojada y pendientes
 
-El 3 de octubre de 2026, con Node 24.19.0 y PGlite 0.3.14, se aprobaron **99 comprobaciones SQL: 25 V1 + 74 V2**. V1 cubre RPC, límites, RLS por propietario y lecturas públicas. V2 cubre wallet, ledger inmutable, idempotencia, límites, ayudas, premios, cierres por lotes, pagos fuera de orden y permisos de Auth. El fixture V2 no concede SELECT general sobre `auth.users`: permite solo las tres columnas necesarias y comprueba que contraseñas, SELECT general y accesos de `anon`/`authenticated` fallen.
+El 3 de octubre de 2026, con Node 24.19.0 y PGlite 0.3.14, se aprobaron **100 comprobaciones SQL: 25 V1 + 75 V2**. V1 cubre RPC, límites, RLS por propietario y lecturas públicas. V2 cubre wallet, ledger inmutable, idempotencia, límites, ayudas, premios, cierres por lotes, pagos fuera de orden, permisos de Auth e índices de claves foráneas. El fixture V2 no concede SELECT general sobre `auth.users`: permite solo las tres columnas necesarias y comprueba que contraseñas, SELECT general y accesos de `anon`/`authenticated` fallen.
 
-Son bases efímeras con roles, Auth y resultados aceptados de prueba. Los tests unitarios también simulan Auth y APIs de pago. Esto no verifica Supabase Auth HTTP, entrega de emails, Data API, aislamiento de sesiones alojadas, RPC reales, cron de Netlify, anuncios reales ni PayPal sandbox/live.
+Las comprobaciones PGlite usan bases efímeras con roles, Auth y resultados aceptados de prueba. Los tests unitarios también simulan Auth y APIs de pago. La verificación HTTP real se registra por separado a continuación.
 
-Antes de activar V2, comprobar en el proyecto real dos cuentas recuperables y una sesión anónima: aislamiento de perfiles y operaciones, rechazo de owner ajeno y RPC privadas, permisos de columnas Auth, carrera/reintento de compras y ayudas, replay, liquidación y devoluciones. Registrar entorno, fecha y resultado por separado; la implementación y los tests locales no sustituyen esa comprobación.
+En PostgreSQL alojado 17.11, la [regresión SQL con rollback](tests/hosted.rollback.sql) aprobó aislamiento de dos propietarios, roles `anon`/`authenticated`/`service_role`, RPC V1, wallet, inventario, ledger, tickets, ayudas y contabilidad de captura/reembolso idempotente. Las filas Auth y resultados son fixtures SQL de prueba, sin sesiones HTTP ni llamadas a PayPal. Al cerrar ese ensayo se confirmó que no quedaban fixtures, perfiles, wallets, ledger o tickets persistentes del rollback. Las 15 tablas tienen RLS y el servidor puede leer las tres columnas de Auth necesarias, sin permiso de contraseña.
+
+Auth anónima real está habilitada. El 3 de octubre de 2026 se aprobaron **23 comprobaciones HTTP con dos sesiones anónimas reales**: acceso Auth y Data API, perfiles privados aislados, lecturas de ranking y desafío V1, sin acceso a los schemas `tower_private`/`tower_economy`. El fixture de ranking/desafío se eliminó y se confirmó que no quedaban filas de ese fixture. La RPC económica se probó por HTTP directamente en Supabase, con rol servidor: confirmó wallet anónimo en cero y rechazo de tickets para una cuenta sin email verificado. Esto no verificó el endpoint público `/api/account` de Netlify. Estas pruebas verifican sesiones anónimas; no equivalen a una cuenta recuperable ni habilitan premios competitivos.
+
+Antes de habilitar Auth anónima, los Advisors alojados no detectaron WARN/ERROR. Tras activarla aparecen cuatro WARN [Anonymous Access Policies](https://supabase.com/docs/guides/database/database-advisors?queryGroups=lint&lint=0012_auth_allow_anonymous_sign_ins) en las políticas de lectura propia de V1: `profiles`, `scores`, `daily_scores` y `challenges`. Es el acceso previsto para usuarios anónimos autenticados; las políticas exigen `auth.uid()=propietario` y el aislamiento se comprobó por HTTP. No se alteraron para silenciar el aviso. La economía V2 conserva acceso privado de servidor y exige email verificado para operaciones económicas.
+
+Se corrigieron las dos claves foráneas sin índice. Permanecen avisos INFO por [RLS sin políticas](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy) en las once tablas privadas, intencional para denegar al navegador, y por [índices sin uso](https://supabase.com/docs/guides/database/database-linter?lint=0005_unused_index) en un proyecto recién creado.
+
+Siguen pendientes SMTP y entrega real de OTP, vinculación y recuperación de cuentas con email verificado, starter único e inventario entre dispositivos, economía completa y replay en Netlify, liquidación programada de rankings con premios, Google H5 real y PayPal sandbox/live. Registrar entorno, fecha y resultado por separado; los ensayos con sesiones anónimas y fixtures SQL no sustituyen esas comprobaciones.
 
 Para repetir SQL sin credenciales ni Docker, desde la raíz del juego:
 

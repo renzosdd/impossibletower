@@ -14,6 +14,7 @@ const start = (aids = [], mode = 'daily', user = player, extras = {}) => api('st
 await db.exec("create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,encrypted_password text);alter table auth.users enable row level security;create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;");
 await db.exec(await readFile(new URL('../migrations/20261003021023_tower_backend.sql', import.meta.url), 'utf8'));
 await db.exec(await readFile(new URL('../migrations/20261003200135_tower_economy_v2.sql', import.meta.url), 'utf8'));
+await db.exec(await readFile(new URL('../migrations/20261003221035_tower_economy_indexes.sql', import.meta.url), 'utf8'));
 await db.query('insert into auth.users(id,email,email_confirmed_at) values($1,$2,now()),($3,$4,now()),($5,null,null)', [player, 'p@example.test', other, 'q@example.test', guest]);
 for (const role of ['anon', 'authenticated']) {
  await db.exec(`set role ${role}`);
@@ -23,6 +24,7 @@ for (const role of ['anon', 'authenticated']) {
  await db.exec('reset role');
 }
 await db.exec('set role service_role');
+await test('all economic foreign keys have a covering index',async()=>{assert.deepEqual((await db.query("select con.conname from pg_constraint con join pg_class c on c.oid=con.conrelid join pg_namespace n on n.oid=c.relnamespace where con.contype='f' and n.nspname='tower_economy' and not exists(select 1 from pg_index i where i.indrelid=con.conrelid and i.indisvalid and i.indisready and i.indpred is null and con.conkey <@ (i.indkey::smallint[])[0:cardinality(con.conkey)-1])")).rows,[]);});
 await test('service role can read only the three granted Auth columns',async()=>{assert.equal((await db.query('select id,email,email_confirmed_at from auth.users')).rows.length,3);await assert.rejects(db.query('select encrypted_password from auth.users'),/permission denied/);await assert.rejects(db.query('select * from auth.users'),/permission denied/);});
 await test('all economic tables enforce RLS and browser roles have no RPC execution',async()=>{const tables=(await db.query("select c.relrowsecurity as rls from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='tower_economy' and c.relkind='r'")).rows;assert.equal(tables.length,11);assert.ok(tables.every(t=>t.rls));for(const role of ['anon','authenticated'])assert.equal((await db.query("select has_function_privilege($1,'public.tower_account_api(text,uuid,jsonb)','EXECUTE') as allowed",[role])).rows[0].allowed,false);});
 await test('starter grant once', async () => { assert.equal((await state()).balance, 100); assert.equal((await state()).balance, 100); });

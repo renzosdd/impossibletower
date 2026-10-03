@@ -228,7 +228,7 @@ El reporte final de entrega indica qué comandos se ejecutaron y sus resultados.
 - Las colisiones usan formas convexas simplificadas; no toda la geometría de la ilustración.
 - El seed reproduce secuencia; la física completa puede variar entre dispositivos.
 - Sin backend hay progreso local y no hay ranking global ni percentil real.
-- Supabase alojado requiere proyecto identificado, credenciales públicas, Anonymous Sign-ins, migración y verificación con sesiones diferentes. Google H5 permanece apagado hasta aprobación y consentimiento.
+- Supabase `nmdesnqgpsbtcoluyajh` está conectado al mismo sitio Netlify: migraciones, Auth anónima y aislamiento HTTP verificados. `SUPABASE_SECRET_KEY` y `REPLAY_WORKER_SECRET` están guardadas como variables estándar autorizadas, sin marcado de secreto, disponibles en todos los alcances y contextos, incluidos previews; el código actual las lee en Functions. La cuenta y economía siguen apagadas y esperan SMTP/OTP real y replay alojado. No usar esas credenciales de producción para pruebas económicas en previews. Google H5 permanece apagado hasta aprobación y consentimiento.
 - `/privacidad`, `/terminos` y `/reglas-ranking` contienen textos adaptados a Renzo Dogliotti y al funcionamiento implementado. Requieren revisión jurídica uruguaya antes de monetizar; no garantizan cobertura legal.
 - El adapter de anuncios es una integración preparada, sin verificación de inventario real.
 
