@@ -101,7 +101,7 @@ export class BackendService {
       try {
         if (!publicKeyIsValid(key)) throw new Error('Supabase requires a publishable or legacy anon key');
         client = createClient(backendUrl(config.url.trim()), key, {
-          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+          auth: { persistSession: true, autoRefreshToken: false, detectSessionInUrl: false },
           global: { fetch: timedFetch },
         });
       } catch (error) { this.rememberError(error); }
@@ -111,6 +111,7 @@ export class BackendService {
   }
 
   initialize(): Promise<void> {
+    this.client?.auth.startAutoRefresh();
     if (!this.client || this.userId) return Promise.resolve();
     if (this.initialization) return this.initialization;
     const client = this.client;
@@ -127,6 +128,17 @@ export class BackendService {
       this.userId = signedIn.data.user.id;
     }, undefined).finally(() => { this.initialization = null; });
     return this.initialization;
+  }
+
+  getAuthClient(): SupabaseClient | null { return this.client; }
+
+  async getAccessToken(): Promise<string | null> {
+    if (!this.client) return null;
+    return this.safely(async () => {
+      const response = await withinDeadline(this.client!.auth.getSession());
+      if (response.error) throw response.error;
+      return response.data.session?.access_token ?? null;
+    }, null);
   }
 
   async submitRun(result: RunResult, name?: string): Promise<void> {

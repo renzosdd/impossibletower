@@ -2,7 +2,7 @@
 
 Un juego arcade de física para jugar con un dedo: soltá objetos desde una grúa y construí la torre más alta posible. La altura es la métrica principal; precisión y combos suman puntos. Los retos compartidos reproducen la misma secuencia de objetos.
 
-La V1 usa ilustraciones procedurales originales y funciona sin cuenta. Las coins sirven exclusivamente para cosméticos: no hay pagos, apuestas, premios en dinero ni conversión a dinero real.
+El juego conserva el progreso local y funciona sin cuenta. La revisión V2 prepara una cuenta recuperable, saldo separado, ayudas, rankings con premios internos y PayPal USD. Los servicios online requieren activación y verificación; anuncios y cobros permanecen apagados. Las coins no se transfieren, retiran ni convierten a dinero.
 
 ## Stack y arquitectura
 
@@ -58,7 +58,7 @@ Para E2E en una máquina propia: `npx playwright install chromium`. También se 
 
 Tocá, clickeá el área de juego o pulsá espacio para soltar. La grúa se mueve sola. Después de caer, una pieza debe estar apoyada y casi inmóvil unos 950 ms. La partida termina al atravesar la kill zone o colapsar una parte significativa de la cima. El siguiente objeto aparece automáticamente.
 
-La secuencia empieza con dos cajas y una mesa. Después aparecen muebles, electrodomésticos, vehículos, casa, barco, pelota y raros como cohete y satélite: 18 objetos con atributos físicos diferentes. La dificultad depende del índice del drop; así dos jugadores conservan los mismos objetos aunque sus alturas sean distintas.
+La secuencia empieza con dos cajas y una mesa. Después aparecen muebles, electrodomésticos, vehículos, casa, barco, pelota y raros como cohete y satélite. El catálogo original de 18 objetos está congelado para desafíos V1; `extended-24` añade la entrega A y `extended-30` incluye las 12 incorporaciones. `VITE_OBJECT_CATALOG` selecciona la entrega Casual; Daily local conserva el catálogo original y Daily competitivo usa el catálogo fijado por el servidor para ese día. La dificultad depende del índice del drop; así dos jugadores conservan los mismos objetos aunque sus alturas sean distintas.
 
 El score es `altura × 10 + objetos × 25 + puntos de precisión`. PERFECT y GREAT mantienen combo; GOOD y RISKY lo reinician. El multiplicador sólo afecta puntos. La altura se calcula en coordenadas del mundo, no de la cámara.
 
@@ -68,7 +68,7 @@ La V1 incluye Casual, Daily Tower y challenge por enlace; cámara ascendente y f
 
 `createRng(seed)` usa hashing y Mulberry32. `objectAt(seed, index)` calcula cada elección independientemente: consultar objetos en otro orden no altera la secuencia. El seed diario es `tower:daily:YYYY-MM-DD:v1`, usando fecha **UTC**. Se permiten múltiples intentos, se guarda la mejor altura y se mantiene racha diaria.
 
-Los enlaces auto contenidos llevan `{ version, seed, height, score, name? }` en base64url dentro de `?challenge=`. Funcionan sin backend ni acortador. El decoder valida tamaños, métricas y nombres. El objetivo compartido es un reto entre amigos, no un resultado de ranking verificado.
+Los enlaces auto contenidos llevan `{ version, seed, height, score, name? }`; V2 también incluye `catalog`. V1 conserva siempre la secuencia original de 18 objetos. Los datos se codifican en base64url dentro de `?challenge=`. Funcionan sin backend ni acortador. El decoder valida tamaños, métricas y nombres. El objetivo compartido es un reto entre amigos, no un resultado de ranking verificado.
 
 Web Share API intenta compartir enlace y, cuando se admite, un PNG Canvas vertical de 1080 × 1920. Si no hay Web Share, se copia el link; si el portapapeles falla, se ofrece copia manual. La tarjeta sólo incluye métricas reales: no se inventan percentiles ni jugadores.
 
@@ -105,7 +105,7 @@ El proveedor espera `onReady`. Una recompensa requiere oferta, inicio, confirmac
 
 | Recompensa | Condiciones y efecto |
 | --- | --- |
-| Segunda oportunidad | Una por partida recuperable: fallo de pieza, ≥3 objetos y resultado pendiente. Restaura la torre y revierte el resultado provisional para contabilizar una sola partida. Partidas asistidas excluidas del ranking. |
+| Segunda oportunidad | Una por partida recuperable: fallo de pieza, ≥3 objetos y resultado pendiente. Restaura la torre y revierte el resultado provisional para contabilizar una sola partida. El ranking V1 excluye partidas asistidas; el competitivo V2 admite hasta dos ayudas visibles. |
 | Duplicar coins | Una por resultado con coins. Elegirla finaliza el resultado y cierra la continuación, incluso si el anuncio falla. No modifica altura ni score. También disponible al terminar una partida asistida. |
 | Bono de 25 coins | En Skins; máximo tres visualizaciones completadas por día UTC y navegador/dispositivo. |
 | Prueba de Confeti | En Skins si no está comprado ni hay una prueba pendiente. Próxima torre, incluida su segunda oportunidad; no desbloquea el cosmético. |
@@ -125,11 +125,27 @@ Con las dos variables vacías el juego local funciona completo. Para habilitar b
 
 El esquema tiene profiles, scores, daily_scores y challenges. Las escrituras pasan por RPCs con RLS, pertenencia del usuario y límites plausibles de modo, seed, altura, puntos, objetos, precisión y duración. El Daily se verifica con fecha del servidor. Las lecturas de ranking muestran datos reales; sin backend se oculta el ranking y un backend vacío no genera jugadores ficticios.
 
-El adapter limita la espera y aborta fetch. Los fallos no impiden jugar ni compartir enlaces auto contenidos. El perfil remoto es respaldo básico; no implementa una economía autoritativa ni merge multidispositivo.
+El adapter limita la espera y aborta fetch. Los fallos no impiden jugar ni compartir enlaces auto contenidos. El respaldo de perfil V1 sigue siendo básico. La migración V2 añade un saldo e inventario autoritativos separados; no importa monedas locales ni fusiona automáticamente perfiles de dispositivos.
 
-Un resultado normal se envía al terminar. Si existe una oferta de segunda oportunidad elegible, su envío remoto se difiere hasta elegir continuar o finalizar mediante menú, reinicio o compartir. Si se continúa, se restaura el progreso previo y se registra una sola partida final; las coins no se duplican. Las partidas asistidas se excluyen de los rankings competitivos.
+Un resultado normal se envía al terminar. Si existe una oferta de segunda oportunidad elegible, su envío remoto se difiere hasta elegir continuar o finalizar mediante menú, reinicio o compartir. Si se continúa, se restaura el progreso previo y se registra una sola partida final; las coins no se duplican. Las partidas asistidas se excluyen del ranking V1. Los nuevos eventos competitivos V2 aceptan ayudas autorizadas y partidas reproducidas por el servidor.
 
-Estas validaciones **no son anti-cheat completo**: el cliente controla la simulación. Una siguiente versión debe registrar cada drop con timestamp, reproducir/validar partidas server-side y añadir límites de abuso por identidad/IP. No usar las tablas para premios financieros.
+Estas validaciones **no son anti-cheat completo**. V1 confía en métricas del cliente dentro de límites básicos. V2 registra eventos por tick, emite tickets y reproduce la física compartida antes de aceptar altura, score y coins. Esto no impide bots, identidades múltiples ni búsqueda automatizada de movimientos. Los premios siguen siendo exclusivamente internos.
+
+## Cuenta, economía y etapas V2
+
+El saldo local anterior conserva el catálogo cosmético existente. El saldo de cuenta se acredita una sola vez con 100 coins al verificar email y usa un ledger transaccional para compras, ayudas, resultados y premios. Las operaciones online no acreditan ni gastan optimistamente cuando falta conexión.
+
+`src/game/simulation/TowerSimulation.ts` comparte Matter, RNG, grúa, cámara, scoring y ayudas con `netlify/functions/_shared/replay.ts`. El servidor valida eventos de drop/ayuda con ticks y permisos, no métricas del navegador. Los comandos que alteran una partida en debug impiden su envío competitivo.
+
+Las seis ayudas cuestan 25/45/20/35/50/90 coins: Guía 5, Guía 10, Vista previa de tres piezas, Foco durante tres lanzamientos, Cambio de pieza y Segunda oportunidad. Se usan hasta dos tipos por torre; las guías son excluyentes. Comprar ayudas ofrece ventaja competitiva. Los tres cosméticos online cuestan 300, 600 y 1200 coins.
+
+Partidas, récord diario y duplicación comparten un límite de 300 coins UTC. Misiones aportan hasta 25 y bonos hasta 75; máximo ordinario 400, más rankings. Los rankings usan Daily competitivo V2, mejor altura diaria, cinco mejores días semanales y veinte mensuales. Los mínimos, desempates y premios completos están en `/reglas-ranking/`.
+
+La cuenta usa email OTP sin cambiar la identidad anónima al vincular. Configurar las plantillas de email, SMTP y callbacks siguiendo [INTEGRATIONS.md](docs/INTEGRATIONS.md). Las declaraciones de edad y autorización del adulto no verifican documentalmente edad o tutela.
+
+Google H5 requiere adulto, consentimiento local y una CMP real; sus callbacks no son comprobantes firmados del servidor. Las pruebas de H5 y el proveedor Mock nunca acreditan el saldo de producción. PayPal crea/captura órdenes desde Functions y procesa webhooks e idempotencia; no acreditar desde el botón o parámetros de retorno.
+
+Activar cada entrega por separado. Variables públicas, secretos de Functions, pasos de Supabase, consentimiento, PayPal y verificaciones están en [INTEGRATIONS.md](docs/INTEGRATIONS.md). El orden y estado real se registran en [ROADMAP.md](docs/ROADMAP.md) y [VALIDATION.md](VALIDATION.md).
 
 ## Analytics architecture
 
@@ -150,7 +166,7 @@ El progreso local puede editarse desde herramientas del navegador. Los cosmétic
 3. Dibujar el objeto propio en `src/game/objects/textures.ts`, alineado con el cuerpo físico.
 4. Ajustar selección/rareza en `objectAt` y probar desde debug.
 
-`objectAt` define etapas y rareza; `craneSpeed` define velocidad y máximo. Al cambiar una secuencia publicada, incrementar la versión del generador/seed para no alterar retos existentes silenciosamente. El seed garantiza orden de objetos; la simulación completa no garantiza igualdad bit a bit entre navegadores.
+`objectAt` define etapas y rareza; `craneSpeed` define velocidad y máximo. Al cambiar una secuencia publicada, incrementar la versión del generador/seed para no alterar retos existentes silenciosamente. El seed garantiza orden de objetos. `TowerSimulation` es compartida por Phaser y el validador de Netlify; la escena solo renderiza y registra entradas. Mantener fijada la versión de Matter y versionar cualquier cambio físico posterior.
 
 `src/utils/stability.ts` contiene thresholds, tiempo de asentamiento y colapso. Exige pérdida significativa de altura y desplazamiento de varias piezas recientes. Una pieza vieja que se mueve un poco no termina el run. Ajustar estos valores con playtesting.
 
@@ -194,7 +210,7 @@ npm run test:e2e
 npm run build
 ```
 
-Publicar exclusivamente `dist/` en el mismo sitio de Netlify, con HTTPS. `netlify.toml` configura build `npm run build`, salida `dist` y Node 22. HTML, manifest, service worker y archivos no versionados revalidan caché; `/assets/*` usa un año e `immutable`. `public/_headers` conserva esas reglas también en una subida manual. No necesita servidor Node en producción. La configuración asume raíz de dominio; para subdirectorios ajustar `base`, `start_url` y scope, y verificar los enlaces y service worker. No publicar `.env.local`.
+Publicar exclusivamente `dist/` en el mismo sitio de Netlify, con HTTPS. `netlify.toml` configura build `npm run build`, salida `dist` y Node 22. HTML, manifest, service worker y archivos no versionados revalidan caché; `/assets/*` usa un año e `immutable`. `public/_headers` conserva esas reglas también en una subida manual. El juego local es estático. Cuenta, replay, premios y cobros utilizan las Netlify Functions de `netlify/functions`, desactivadas sin sus variables de servidor. La configuración asume raíz de dominio; para subdirectorios ajustar `base`, `start_url` y scope, y verificar los enlaces y service worker. No publicar `.env.local`.
 
 El proyecto y los builds locales no implican commit, push ni publicación. `index.html` apunta al código fuente de Vite; los exports compilados históricos en la raíz se conservan, pero la entrega actual se genera en `dist/`. Consultar `VALIDATION.md` para el estado real de cada revisión.
 
@@ -213,7 +229,7 @@ El reporte final de entrega indica qué comandos se ejecutaron y sus resultados.
 - El seed reproduce secuencia; la física completa puede variar entre dispositivos.
 - Sin backend hay progreso local y no hay ranking global ni percentil real.
 - Supabase alojado requiere proyecto identificado, credenciales públicas, Anonymous Sign-ins, migración y verificación con sesiones diferentes. Google H5 permanece apagado hasta aprobación y consentimiento.
-- Los diálogos Privacy y Terms son placeholders y **deben completarse y revisarse legalmente antes del lanzamiento comercial**, reflejando proveedores y jurisdicciones reales.
+- `/privacidad`, `/terminos` y `/reglas-ranking` contienen textos adaptados a Renzo Dogliotti y al funcionamiento implementado. Requieren revisión jurídica uruguaya antes de monetizar; no garantizan cobertura legal.
 - El adapter de anuncios es una integración preparada, sin verificación de inventario real.
 
 ## Próximos cinco experimentos de producto

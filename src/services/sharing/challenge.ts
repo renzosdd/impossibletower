@@ -15,13 +15,14 @@ function publicName(value: unknown): string | undefined {
 function validateChallenge(value: unknown): Challenge | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
-  if (candidate.version !== 1 || typeof candidate.seed !== 'string') return null;
+  if ((candidate.version !== 1 && candidate.version !== 2) || typeof candidate.seed !== 'string') return null;
+  if (candidate.version === 2 && !['legacy-18', 'extended-24', 'extended-30'].includes(String(candidate.catalog))) return null;
   if (!candidate.seed.length || candidate.seed.length > MAX_SEED_LENGTH || /[\u0000-\u001f\u007f]/.test(candidate.seed)) return null;
   if (typeof candidate.height !== 'number' || !Number.isFinite(candidate.height) || candidate.height < 0 || candidate.height > MAX_HEIGHT) return null;
   if (typeof candidate.score !== 'number' || !Number.isSafeInteger(candidate.score) || candidate.score < 0 || candidate.score > MAX_SCORE) return null;
   if (candidate.name !== undefined && (typeof candidate.name !== 'string' || candidate.name.length > 256)) return null;
   const name = publicName(candidate.name);
-  return { version: 1, seed: candidate.seed, height: candidate.height, score: candidate.score, ...(name ? { name } : {}) };
+  return { version: candidate.version as 1 | 2, seed: candidate.seed, height: candidate.height, score: candidate.score, ...(candidate.version === 2 ? { catalog: candidate.catalog as Challenge['catalog'] } : {}), ...(name ? { name } : {}) };
 }
 
 /** Portable UTF-8 base64url. It carries a seed and a target, not trusted ranking data. */
@@ -141,7 +142,7 @@ export async function createShareCard(result: RunResult, name?: string): Promise
 }
 
 export async function shareResult(result: RunResult, name?: string, image = false): Promise<{ method: 'share' | 'copy' | 'manual'; url: string }> {
-  const challenge: Challenge = { version: 1, seed: result.seed, height: result.height, score: result.score, ...(publicName(name) ? { name: publicName(name) } : {}) };
+  const challenge: Challenge = { version: result.catalog && result.catalog !== 'legacy-18' ? 2 : 1, seed: result.seed, height: result.height, score: result.score, ...(result.catalog && result.catalog !== 'legacy-18' ? { catalog: result.catalog } : {}), ...(publicName(name) ? { name: publicName(name) } : {}) };
   const url = challengeUrl(challenge);
   const text = `Llegué a ${result.height.toFixed(1)} m en Impossible Tower. ¿Me superás?`;
   if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {

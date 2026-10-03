@@ -1,50 +1,62 @@
 # Validación de Impossible Tower
 
-Validado el 3 de octubre de 2026 sobre el código y build incluidos en esta entrega.
+Revisión V2 del 3 de octubre de 2026. Se distingue implementación, simulación y producción real.
+
+## Código y pruebas locales
 
 | Comprobación | Resultado |
-| --- | --- |
-| `npm install` | Instalación correcta |
-| `npm run dev` | Menú y gameplay comprobados en navegador |
-| `npm run build` | TypeScript y Vite sin errores; salida `dist/` |
-| `npm test` | 143 tests aprobados en 10 archivos |
-| E2E base sobre producción | 15 tests aprobados en Chrome/Chromium |
-| Recompensas sobre producción | 7 E2E aprobados; callbacks publicitarios simulados |
-| Orientación sobre producción | 6 E2E aprobados; 10 unitarios incluidos en el total |
-| Actualización de PWA | 1 E2E aprobado entre bundle anterior y build actual |
-| URL pública de Netlify | 5 E2E aprobados sobre HTTPS; entry y caché verificadas |
-| PostgreSQL/PGlite | 25 comprobaciones de migración, RPC, RLS y validación aprobadas |
+|---|---|
+| TypeScript y build de producción | Aprobados con Node 24.19.0; Netlify usa Node 22 |
+| Tests unitarios | 281 aprobados en 17 archivos |
+| PostgreSQL/PGlite | 99 comprobaciones: 25 de backend V1 y 74 de economía V2 |
+| E2E existentes sobre preview de producción | 29 aprobados: 15 base, 7 recompensas, 6 orientación y 1 actualización de PWA |
+| E2E nuevos de cuenta/simulación | 10 aprobados: 5 sobre Vite y 5 con Auth/API simulados |
+| Entrega B | 56 regresiones focales de objetos, cuerpos, seeds, simulación y controles aprobadas |
+| Revisión visual | Atlas de los 12 objetos, guía, foco/vista previa y legales móviles revisados |
+| `git diff --check` | Aprobado |
 
-Verificación local con Node 24.19.0 y Google Chrome en macOS, usando el preview de producción en `http://127.0.0.1:4173`. El sandbox bloqueó inicialmente la instalación por DNS, el puerto local y el inicio de Chrome; las repeticiones con acceso autorizado completaron esas comprobaciones.
+Matter.js está fijado en 0.20.0. Navegador y validador usan `TowerSimulation` a 60 Hz. Tres partidas físicas con RAF solicitado a 30, 60 y 120 FPS reproducen en Node exactamente altura, score, PERFECT y secuencia observados. Se comprueban dos cajas y mesa mediante caídas reales. El replay registra ticks y acciones; el cliente no decide posiciones, score ni saldo aceptados. Estas pruebas no demuestran equivalencia en todos los motores JavaScript ni anti-cheat completo.
 
-El build genera service worker y manifest con 22 entradas de precache. Los E2E prueban recarga offline y un aterrizaje físico real sin red, además de menú, caída, kill zone, reinicio, récord, Daily UTC, desafío con el mismo seed, copia/manual fallback, pausa, preferencias, anuncio fallido y segunda oportunidad sin duplicar coins. La tarjeta compartible fue generada por Canvas y decodificada como PNG real de 1080 × 1920 con URL y métricas correctas.
+Las regresiones comprueban catálogos congelados de 18, 24 y 30 objetos, geometrías compuestas, masa/fricción/rebote, centros de masa y desafíos V1/V2. La mesa conserva las patas corregidas. Vista previa revela solo las tres piezas fijadas al activarla. Foco dura tres lanzamientos; continuar conserva reloj, secuencia y cuotas. Guías excluyentes y máximo de dos ayudas también se aplican a la continuación publicitaria.
 
-## Orientación, recompensas y actualización
+Los E2E online simulan una sesión verificada y respuestas HTTP: saldo separado del perfil local, compra/consumo, pausa durante solicitudes, guía, foco, vista previa, segunda oportunidad, cambio de pieza y tabs por etapa. Comprueban que un resultado pendiente se recibe antes del siguiente ticket y que el loadout consumido no se reutiliza. No hubo una cuenta real de Supabase.
 
-Se restauró `index.html` como entrada del código fuente Vite: la copia recibida apuntaba a assets compilados, mientras los fuentes carecían de parte de las mejoras descritas. Se incorporaron netlify.toml, .env.example y reglas de caché para builds y subidas manuales.
+PGlite ejecuta ambas migraciones con roles de prueba y `auth.users` con RLS. La migración concede al servidor únicamente `id`, `email` y `email_confirmed_at`; el fixture comprueba que `encrypted_password` sigue inaccesible. Se verifican aislamiento, 100 coins una vez, ledger inmutable, inventario, idempotencia, topes diarios, tickets, autorización de ayudas, leases, premios y compensaciones. Las capturas/refunds de SQL y unitarios son datos simulados, no cobros PayPal. PGlite no verifica Auth HTTP, Data API alojada ni concurrencia entre conexiones independientes.
 
-Los 29 escenarios locales de navegador pasaron: 15 base, 7 recompensas, 6 orientación y 1 actualización de PWA. No se registraron errores JavaScript.
+Los E2E anteriores de recompensas usan el proveedor debug. Google H5 se prueba con callbacks simulados, incluidos error, cancelación, timeout, revocación y callbacks tardíos. Test mode no acredita coins de producción. Los callbacks reales de H5 tampoco constituyen una prueba firmada del servidor.
 
-Orientación comprueba rotación móvil, conservación de torre/seed/score, pausa manual, teclado virtual con orientación física portrait, desktop y aviso oculto durante anuncio simulado. Las métricas del teclado usan CDP; reducir el viewport con Playwright por sí solo también altera orientación y no representa un teclado.
+## Publicaciones en el mismo sitio Netlify
 
-Recompensas comprueba bono de 25 coins, tres usos por día UTC, recarga/cambio de día, Confeti pendiente/comprado, tres drops físicos más una caída fallada, segunda oportunidad asistida, restauración del efecto y duplicación final. Duplicar cierra la continuación tanto con éxito como con fallo del anuncio. Fallos no otorgan premios y volver al menú no inicia anuncios. Durante dos anuncios simulados de Skins se verificó que ningún diálogo nativo quedara abierto y que el diálogo volviera al terminar.
+Sitio: [impossibletower.netlify.app](https://impossibletower.netlify.app). ID: `8124dd1c-e5ba-4edc-932b-d65c63f08d29`.
 
-La actualización de PWA usa un servidor local que pasa del bundle compilado anterior al build actual en el mismo origen. Verifica cambio de service worker y entrada versionada, conservación de perfil y ledger, recarga offline y aterrizaje físico. Conserva el contrato persistido `version/day/coinClaims/pendingTrial`: dos bonos usados y Confeti pendiente sobreviven a la actualización. Es una simulación real de actualización en Chrome, no una prueba de instalación en un teléfono físico.
+| Entrega | Deploy listo | Hora UTC | Resultado real |
+|---|---|---|---|
+| Etapa 1: legales | `6ac1680e6be717672d5c3d5a` | 2026-10-03 20:40:18 | Tres rutas HTTP 200, identidad/contacto y diseño móvil comprobados |
+| Etapa 3 A: seis objetos | `6ac16d72ce01f1f99846eef3` | 2026-10-03 21:03:29 | Ocho E2E públicos aprobados; Casual `extended-24`, desafíos V1 `legacy-18` |
+| Etapa 3 B: otros seis | `6ac170f3c46095bf5638887e` | 2026-10-03 21:18:13 | Ocho E2E públicos aprobados; Casual `extended-30`, desafíos V1 `legacy-18` |
 
-## Ajuste de física verificado previamente
+A incluye las funciones preparadas, con economía, rankings, anuncios y PayPal desactivados. Netlify registró cinco Functions con runtime Node 22; el cron `settle` está configurado cada cinco minutos UTC. Esto demuestra empaquetado y configuración, no liquidación real de premios.
 
-El playtest detectó que las patas de la mesa inicial podían quedar muy cerca del borde de la caja inferior y provocar una inclinación prematura. Se movieron hacia adentro, se alineó la ilustración con el cuerpo y se agregó una regresión que simula dos cajas dinámicas, mesa y cuarta caja con el mismo motor y criterio de estabilidad del juego.
+Ocho escenarios públicos de A: menú sin servicios ni inspector para visitantes normales; caída física/record/reinicio; rotación conservando torre; teclado portrait mediante CDP; PWA offline con caída real; tres legales independientes; `/api/account` y `/api/paypal-webhook` devuelven 503 y `no-store` con flags apagados; catálogo nuevo y compatibilidad V1. Un selector incorrecto del fixture del último escenario fue corregido y pasó por separado, sin cambiar el juego.
 
-El reporte original también verificó el apilado real en navegador con dos seeds, sin colocar cuerpos artificialmente. La grúa se alineó automáticamente y cada objeto cayó y se estabilizó mediante Matter.js:
+La entrada de A `/assets/index-Bi-iqPjO.js` coincide con su build. B repitió los ocho E2E sin fallos y su entrada `/assets/index-CJcMk9eJ.js` coincide con el build final. Deploy inmutable: [entrega B](https://6ac170f3c46095bf5638887e--impossibletower.netlify.app). HTTP 200 y caché verificados: HTML, `sw.js` y manifest usan `public, max-age=0, must-revalidate`; assets versionados usan `public, max-age=31536000, immutable`. Los legales no cargan juego ni publicidad; Netlify puede insertar su propio script HUD.
 
-| Seed | Objetos | Altura | Perfect Drops | Final |
-| --- | --- | --- | --- | --- |
-| `physics-balanced` | 8 | 50.6 m | 7 | Colapso natural al añadir el noveno objeto |
-| `tower:daily:2026-10-03:v1` | 8 | 49.2 m | 8 | Colapso natural al añadir el noveno objeto |
+Se publicaron snapshots sin `.env.local`, secretos, `node_modules`, cachés ni exports antiguos. El primer intento de legales (`6ac16784d3935659edfcd7b5`) falló al empaquetar un enlace de `node_modules`; eliminarlo permitió la entrega lista posterior. No se creó otro sitio ni se hizo push. Este informe se completó tras el QA público; ese registro posterior no cambia el bundle publicado.
 
-Ambos completaron los cuatro primeros objetos con cuatro Perfect Drops, según la entrega original. En esta revisión se repitió la regresión de cuatro objetos físicos y la recuperación de tres objetos; no se repitieron las dos sesiones completas de ocho objetos.
+## Activaciones y límites pendientes
 
-## Repetir la validación
+- Supabase: el conector solo muestra una organización y un proyecto ajeno/inactivo. No se modificó ese proyecto ni se aplicaron migraciones externas. Falta seleccionar organización/proyecto, confirmar costo si se crea, configurar claves y SMTP, probar vinculación/recuperación, dos sesiones, Data API/RLS/RPC y replay alojado.
+- Economía y premios: el código y las pruebas no demuestran ejecución real del scheduler, concurrencia alojada ni recuperación ante fallos externos. Activar diario primero; semanal y mensual después, con flags independientes.
+- Google: faltan aprobación H5, publisher, línea exacta de `ads.txt`, SDK real de CMP certificada y anuncios reales. No se inventaron esos datos. Edad/tutela son declaraciones; menores y edad desconocida no cargan publicidad.
+- PayPal: faltan Business Uruguay, aprobación específica para coins, credenciales y pruebas sandbox. Compra, devolución y retiro reales siguen pendientes. No hubo cobros.
+- Dispositivos: no se probaron teléfonos físicos Safari/iOS/Android, 60 FPS sostenidos ni actualización de una PWA instalada físicamente. La actualización local de un bundle anterior al actual en Chrome conserva perfil/ledger y juego offline.
+- Legales: responsable/contacto completados y funcionamiento actual/futuro diferenciados. Son una base, no garantía de cobertura; revisión uruguaya antes de monetizar.
+
+El juego local continúa cuando falla un servicio. Gastos y créditos nuevos del wallet online requieren conexión y confirmación del servidor; las coins históricas siguen separadas para el catálogo local.
+
+## Repetir comprobaciones
+
+Usar Node 22.12 o posterior.
 
 ```bash
 npm install
@@ -53,34 +65,29 @@ npm run build
 npm run preview
 ```
 
-Con preview activo, en otra terminal:
+Con preview activo:
 
 ```bash
-PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 PLAYWRIGHT_PWA=1 npm run test:e2e
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 PLAYWRIGHT_PWA=1 npm run test:e2e -- tests/e2e/game.spec.ts tests/e2e/sharing.spec.ts tests/e2e/pwa.spec.ts tests/e2e/orientation.spec.ts tests/e2e/rewards.spec.ts tests/e2e/pwa-update.spec.ts
 ```
 
-La configuración usa Chromium del sistema si existe `/usr/bin/chromium` o Google Chrome de macOS si está instalado. En otra máquina puede instalarse con `npx playwright install chromium` o configurarse `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
+Los cinco escenarios nuevos de simulación usan Vite dev con `?inspect=1`; ese inspector no existe en producción. Ejecutar `tests/e2e/account-and-simulation.spec.ts` sobre dicho servidor. Para sus cinco escenarios de cuenta, iniciar otro Vite con variables ficticias:
 
-Las instrucciones para repetir las comprobaciones SQL están en `supabase/README.md`.
+```bash
+VITE_SUPABASE_URL=https://tower-test.supabase.co VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_test VITE_SERVER_ECONOMY_ENABLED=true VITE_SERVER_RANKINGS_ENABLED=true VITE_RANKING_PERIODS=daily,weekly,monthly npm run dev -- --port 5181 --strictPort
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:5181 PLAYWRIGHT_ACCOUNT_ENABLED=1 npm run test:e2e -- tests/e2e/account-and-simulation.spec.ts
+```
 
-## Alcance y límites
+Verificación pública focal:
 
-Chromium headless y PostgreSQL/PGlite no sustituyen pruebas en teléfonos físicos, Safari, Auth alojado de Supabase ni inventario real de portales. El objetivo de 60 FPS y las sesiones de 1–4 minutos requieren medición y playtesting en dispositivos reales. Los conectores identificaron `impossibletower.netlify.app` como el sitio del mismo repositorio y commit inicial. Esta revisión fue publicada en producción mediante el conector Netlify, deploy `6ac14f99c15b354f1bfe3a82`, listo el 3 de octubre de 2026 a las 15:55 (America/Montevideo). Supabase muestra solo un proyecto ajeno/inactivo: no se aplicó ninguna migración externa ni se verificaron Auth/Data API alojados. Los límites del backend son validaciones básicas, no anti-cheat completo. Privacy y Terms son borradores que deben completarse antes del lanzamiento comercial.
+```bash
+PLAYWRIGHT_BASE_URL=https://impossibletower.netlify.app PLAYWRIGHT_PWA=1 PLAYWRIGHT_RELEASE_VERIFY=1 PLAYWRIGHT_RELEASE_CATALOG=extended-30 npm run test:e2e -- tests/e2e/game.spec.ts tests/e2e/orientation.spec.ts tests/e2e/pwa.spec.ts tests/e2e/release.spec.ts --grep 'loads menu|places a real box|rotation freezes|portrait keyboard|production manifest|legal pages|published'
+```
 
-## Git y configuración de entrega
+La configuración usa Chrome de macOS o Chromium del sistema. Puede configurarse `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. SQL y activación real: [Supabase](supabase/README.md), [integraciones](docs/INTEGRATIONS.md), [etapas](docs/ROADMAP.md).
 
-Estado inicial: `main`, limpio, commit `107d2d4`, remoto `https://github.com/renzosdd/impossibletower.git`. Durante el trabajo apareció el commit local `1f4ee83`; no se ejecutaron commit ni push desde esta sesión. El estado observado queda un commit por delante de origin/main, más los cambios posteriores de validación.
+## Git
 
-Publicidad: `VITE_PLATFORM=standalone`, `VITE_AD_PROVIDER=none`. No se verificó publicidad real. Supabase no tiene variables configuradas en el sitio. Privacidad y Términos siguen provisionales; faltan datos del responsable/contacto, revisión legal y consentimiento antes de activar publicidad. Safari/iOS/Android físicos, rendimiento de 60 FPS y actualización de instalación física siguen pendientes.
+Inicio de esta revisión: `main`, limpio, commit `b1354cf`, alineado con `origin/main`. Esta sesión no creó commits ni hizo push. Los cambios quedan en el workspace; un deploy manual no actualiza el repositorio remoto.
 
-## Producción verificada
-
-URL: https://impossibletower.netlify.app
-
-Deploy inmutable: https://6ac14f99c15b354f1bfe3a82--impossibletower.netlify.app
-
-Netlify reconstruyó una copia de los fuentes verificados, sin credenciales, node_modules, cachés ni exports antiguos. El primer intento devolvió 401; renovar la autorización temporal del conector permitió publicar. No se creó otro sitio ni se hizo push de Git. La vinculación local del sitio queda en .netlify/state.json, fuera de Git.
-
-Cinco E2E en la URL pública aprobaron menú sin servicios/debug para visitantes normales, caída real/record/reinicio, rotación con torre conservada, teclado virtual portrait y PWA offline con aterrizaje real. La entrada pública `/assets/index-BQ1Yk7ky.js` coincide con el build local. HTTP 200 y Cache-Control comprobados: HTML, sw.js y manifest revalidan; el asset versionado usa max-age=31536000, immutable. Netlify informa cuatro reglas de headers procesadas.
-
-La publicidad real y Supabase alojado siguen sin activar ni verificar; todas las pruebas de recompensas utilizan el proveedor simulado de debug. El informe local y los últimos ajustes del fixture de orientación se guardaron después de subir los fuentes; no cambian el bundle publicado.
+El informe anterior describía 143 unitarios, 25 SQL y deploy `6ac14f99c15b354f1bfe3a82`; corresponde a V1. Sus datos de Git y legales provisionales no describen esta revisión V2.

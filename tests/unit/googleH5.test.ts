@@ -1,8 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAdProvider, GoogleH5AdProvider, MockAdProvider } from '../../src/services/ads';
 import { type GoogleAdPlacement } from '../../src/services/ads/googleH5';
+import { PrivacyConsentService } from '../../src/services/privacy';
 
 const CLIENT = 'ca-pub-1234567890123456';
+
+function allowedPrivacy() {
+  const privacy = new PrivacyConsentService(undefined);
+  privacy.saveAgeGroup('adult');
+  privacy.saveAdsConsent('granted');
+  privacy.setAdvertisingConsentAdapter({ isConfigured: () => true, getConsent: () => 'granted', subscribe: () => () => {} });
+  return privacy;
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -29,7 +38,7 @@ function browser() {
 
 async function initialized() {
   const stub = browser();
-  const provider = new GoogleH5AdProvider({ client: CLIENT, channel: '1234' });
+  const provider = new GoogleH5AdProvider({ client: CLIENT, channel: '1234', privacy: allowedPrivacy() });
   const initialization = provider.initialize();
   stub.ready();
   await initialization;
@@ -44,6 +53,61 @@ function viewed(placement: GoogleAdPlacement, status = 'viewed') {
 }
 
 describe('Google H5 readiness', () => {
+  it.each(['unknown', 'under13', 'teen'] as const)('does not load scripts for age group %s', async ageGroup => {
+    const stub = browser();
+    const privacy = allowedPrivacy();
+    privacy.saveAgeGroup(ageGroup);
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy });
+    await provider.initialize();
+    expect(stub.appendChild).not.toHaveBeenCalled();
+    expect(stub.sdk.adConfig).not.toHaveBeenCalled();
+  });
+
+  it('does not initialize for adult opt-in without a CMP, and retries after its configuration', async () => {
+    const stub = browser();
+    const privacy = new PrivacyConsentService(undefined);
+    privacy.saveAgeGroup('adult'); privacy.saveAdsConsent('granted');
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy });
+    await provider.initialize();
+    expect(stub.appendChild).not.toHaveBeenCalled();
+    privacy.setAdvertisingConsentAdapter({ isConfigured: () => true, getConsent: () => 'granted', subscribe: () => () => {} });
+    const next = provider.initialize();
+    stub.ready(); await next;
+    expect(provider.isRewardedAvailable()).toBe(true);
+  });
+
+  it('blocks test mode in production rather than loading live advertisements', async () => {
+    const stub = browser();
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy: allowedPrivacy(), testMode: true, deploymentContext: 'production' });
+    await provider.initialize();
+    expect(stub.appendChild).not.toHaveBeenCalled();
+    expect(stub.sdk.adConfig).not.toHaveBeenCalled();
+  });
+
+  it('can initialize again immediately after withdrawal without reusing the cancelled attempt', async () => {
+    const stub = browser();
+    const privacy = allowedPrivacy();
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy });
+    const first = provider.initialize();
+    privacy.revokeAdsConsent(); privacy.saveAdsConsent('granted');
+    const second = provider.initialize();
+    expect(second).not.toBe(first);
+    await first;
+    expect(provider.initialize()).toBe(second);
+    stub.ready(); await second;
+    expect(provider.isRewardedAvailable()).toBe(true);
+    expect(stub.appendChild).toHaveBeenCalledTimes(2);
+  });
+
+  it('never awards coins from a completed Google test placement', async () => {
+    const stub = browser();
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy: allowedPrivacy(), testMode: true, deploymentContext: 'preview' });
+    const init = provider.initialize(); stub.ready(); await init;
+    expect(stub.script.setAttribute).toHaveBeenCalledWith('data-adbreak-test', 'on');
+    const result = provider.rewardedAd('bonus'); viewed(stub.placement());
+    await expect(result).resolves.toEqual({ success: false, evidence: 'simulation' });
+  });
+
   it('requires provider selection and a valid publisher for standalone builds', async () => {
     const stub = browser();
     vi.stubEnv('VITE_PLATFORM', 'standalone');
@@ -71,7 +135,7 @@ describe('Google H5 readiness', () => {
 
   it('confirms readiness only through onReady after requesting preloading', async () => {
     const stub = browser();
-    const provider = new GoogleH5AdProvider({ client: CLIENT, channel: '1234' });
+    const provider = new GoogleH5AdProvider({ client: CLIENT, channel: '1234', privacy: allowedPrivacy() });
     const first = provider.initialize();
     expect(provider.initialize()).toBe(first);
     expect(provider.isRewardedAvailable()).toBe(false);
@@ -88,7 +152,7 @@ describe('Google H5 readiness', () => {
     const stub = browser();
     const sdk: { adsbygoogle?: Array<{ onReady?: () => void }> } = {};
     vi.stubGlobal('window', sdk);
-    const provider = new GoogleH5AdProvider({ client: CLIENT });
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy: allowedPrivacy() });
     const initialization = provider.initialize();
     expect(stub.appendChild).toHaveBeenCalledTimes(1);
     expect(provider.isRewardedAvailable()).toBe(false);
@@ -100,7 +164,7 @@ describe('Google H5 readiness', () => {
   it('ignores onReady after initialization timeout', async () => {
     vi.useFakeTimers();
     const stub = browser();
-    const provider = new GoogleH5AdProvider({ client: CLIENT });
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy: allowedPrivacy() });
     const initialization = provider.initialize();
     await vi.advanceTimersByTimeAsync(8_000);
     await initialization;
@@ -111,7 +175,7 @@ describe('Google H5 readiness', () => {
 
   it('absorbs blocked script loading', async () => {
     const stub = browser();
-    const provider = new GoogleH5AdProvider({ client: CLIENT });
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy: allowedPrivacy() });
     const initialization = provider.initialize();
     const errorHandler = stub.script.addEventListener.mock.calls.find((args) => args[0] === 'error')?.[1] as (() => void);
     errorHandler();
@@ -129,6 +193,44 @@ describe('Google H5 readiness', () => {
 });
 
 describe('Google H5 reward evidence', () => {
+  it('withdraws consent during an ad and ignores late completed callbacks', async () => {
+    const stub = browser();
+    const privacy = allowedPrivacy();
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy });
+    const init = provider.initialize(); stub.ready(); await init;
+    const result = provider.rewardedAd('bonus');
+    const ad = stub.placement();
+    ad.beforeReward(() => ad.beforeAd());
+    privacy.revokeAdsConsent();
+    viewed(ad);
+    await expect(result).resolves.toEqual({ success: false });
+    expect(provider.isRewardedAvailable()).toBe(false);
+    expect(stub.script.remove).toHaveBeenCalledTimes(1);
+    await expect(provider.rewardedAd('bonus')).resolves.toEqual({ success: false });
+  });
+
+  it('cancels initialization on withdrawal and ignores a late ready callback', async () => {
+    const stub = browser();
+    const privacy = allowedPrivacy();
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy });
+    const init = provider.initialize();
+    privacy.revokeAdsConsent(); stub.ready(); await init;
+    expect(provider.isRewardedAvailable()).toBe(false);
+  });
+
+  it('rechecks CMP consent at completion even if the CMP misses its update event', async () => {
+    const stub = browser();
+    const privacy = allowedPrivacy();
+    let granted = true;
+    privacy.setAdvertisingConsentAdapter({ isConfigured: () => true, getConsent: () => granted ? 'granted' : 'denied', subscribe: () => () => {} });
+    const provider = new GoogleH5AdProvider({ client: CLIENT, privacy });
+    const init = provider.initialize(); stub.ready(); await init;
+    const result = provider.rewardedAd('bonus');
+    granted = false;
+    viewed(stub.placement());
+    await expect(result).resolves.toEqual({ success: false });
+  });
+
   it('waits for viewed confirmation, ad closure, and the final placement status', async () => {
     const { provider, placement } = await initialized();
     const result = provider.rewardedAd('second-chance');
@@ -143,7 +245,7 @@ describe('Google H5 reward evidence', () => {
     await Promise.resolve();
     expect(settled).not.toHaveBeenCalled();
     ad.adBreakDone({ breakStatus: 'viewed' });
-    await expect(result).resolves.toEqual({ success: true });
+    await expect(result).resolves.toEqual({ success: true, evidence: 'browser-callback' });
     expect(provider.isRewardedAvailable()).toBe(true);
   });
 
@@ -199,7 +301,7 @@ describe('Google H5 reward evidence', () => {
     ad.beforeReward(show);
     expect(show).toHaveBeenCalledTimes(1);
     ad.adViewed(); ad.afterAd(); ad.adBreakDone({ breakStatus: 'viewed' });
-    await expect(first).resolves.toEqual({ success: true });
+    await expect(first).resolves.toEqual({ success: true, evidence: 'browser-callback' });
     expect(sdk.adBreak).toHaveBeenCalledTimes(1);
   });
 

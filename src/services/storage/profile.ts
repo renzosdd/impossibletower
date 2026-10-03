@@ -1,12 +1,12 @@
 import { ACHIEVEMENTS } from '../../content/achievements';
-import { COSMETICS, DEFAULT_COSMETICS } from '../../content/cosmetics';
+import { COSMETICS, ACCOUNT_COSMETICS, DEFAULT_COSMETICS } from '../../content/cosmetics';
 import { MISSIONS } from '../../content/missions';
 import type { Profile } from '../../types';
 
 /** Keep the key stable; the version inside the payload controls migrations. */
 export const STORAGE_KEY = 'impossible-tower.profile';
 
-const cosmeticById = new Map(COSMETICS.map((cosmetic) => [cosmetic.id, cosmetic]));
+const cosmeticById = new Map([...COSMETICS, ...ACCOUNT_COSMETICS].map((cosmetic) => [cosmetic.id, cosmetic]));
 const achievementIds = new Set(ACHIEVEMENTS.map((achievement) => achievement.id));
 const MAX_NUMBER = 1_000_000_000;
 

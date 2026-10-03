@@ -2,6 +2,7 @@ import type { Challenge, GameSnapshot, Profile, RunConfig, RunResult, UIAction }
 import { COSMETICS } from '../content/cosmetics';
 import { MISSIONS, getActiveMissions } from '../content/missions';
 import { ACHIEVEMENTS } from '../content/achievements';
+import { LEGAL_DOCUMENTS, renderLegalBody } from '../content/legal';
 
 type LeaderboardEntry = { name: string; height: number };
 type Screen = 'menu' | 'game' | 'result';
@@ -428,8 +429,8 @@ export class Interface {
   }
 
   private openLegal(kind: 'privacy' | 'terms'): void {
-    const privacy = kind === 'privacy';
-    this.openDialog(kind, privacy ? 'Privacidad' : 'Términos', `<div class="legal-notice">DOCUMENTO PROVISIONAL · V1</div><p class="dialog-description">${privacy ? 'El juego guarda tu progreso y preferencias en tu dispositivo. No pide datos personales para jugar.' : 'Impossible Tower es un juego gratuito. Las coins y los cosméticos solo tienen uso dentro del juego y no pueden convertirse en dinero.'}</p><p class="legal-copy">${privacy ? 'Si se configura un backend, podrá guardar un perfil anónimo, tu nombre público opcional y los resultados de tus partidas. Los proveedores de publicidad y analítica deberán documentarse según la configuración de lanzamiento.' : 'Las partidas dependen de física simulada y de tu timing. Los desafíos y rankings son recreativos. Los servicios externos pueden no estar disponibles; el juego local seguirá funcionando.'}</p><p class="fine-print">Este documento es un placeholder. Debe completarse y revisarse legalmente antes de un lanzamiento comercial.</p>`);
+    const document = LEGAL_DOCUMENTS[kind];
+    this.openDialog(kind, document.title, `${renderLegalBody(document)}<div class="dialog-legal"><a href="${document.path}" target="_blank" rel="noopener">Abrir página pública</a><span>·</span><a href="${LEGAL_DOCUMENTS.ranking.path}" target="_blank" rel="noopener">Reglas del ranking</a></div>`);
   }
 
   private createDebugPanel(): void {

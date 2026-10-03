@@ -28,3 +28,9 @@ export const DEFAULT_COSMETICS = {
   trail: 'trail-default',
   effect: 'effect-default',
 } as const;
+
+export const ACCOUNT_COSMETICS: readonly Cosmetic[] = Object.freeze([
+  { id: 'crane-copper', name: 'Cobre', category: 'crane', price: 300, color: '#cf835e' },
+  { id: 'crane-cobalt', name: 'Cobalto', category: 'crane', price: 600, color: '#587ac6' },
+  { id: 'crane-obsidian', name: 'Obsidiana', category: 'crane', price: 1200, color: '#273641' },
+]);

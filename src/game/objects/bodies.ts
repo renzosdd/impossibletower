@@ -115,6 +115,77 @@ export function createObjectBody(def: ObjectDefinition, x: number, y: number): M
       rectangle(w * 0.7, h * 0.23, w * 0.3, h * 0.52);
       rectangle(w * 0.3, h * 0.05, w * 0.4, h * 0.85);
       break;
+    case 'toaster':
+      rectangle(0, h * 0.18, w, h * 0.82);
+      rectangle(w * 0.18, 0, w * 0.23, h * 0.25);
+      rectangle(w * 0.55, 0, w * 0.23, h * 0.25);
+      break;
+    case 'television':
+      rectangle(0, 0, w, h * 0.75);
+      rectangle(w * 0.43, h * 0.74, w * 0.14, h * 0.18);
+      rectangle(w * 0.18, h * 0.9, w * 0.64, h * 0.1);
+      break;
+    case 'planter':
+      polygon([
+        { x: 0, y: h * 0.46 }, { x: w, y: h * 0.46 },
+        { x: w * 0.8, y: h }, { x: w * 0.2, y: h },
+      ]);
+      rectangle(w * 0.46, h * 0.16, w * 0.08, h * 0.38);
+      polygon([
+        { x: w * 0.5, y: h * 0.28 }, { x: w * 0.08, y: h * 0.1 },
+        { x: w * 0.13, y: 0 }, { x: w * 0.46, y: h * 0.13 },
+      ]);
+      polygon([
+        { x: w * 0.5, y: h * 0.4 }, { x: w * 0.96, y: h * 0.17 },
+        { x: w * 0.96, y: h * 0.08 }, { x: w * 0.58, y: h * 0.22 },
+      ]);
+      break;
+    case 'traffic-cone':
+      polygon([
+        { x: w * 0.5, y: 0 }, { x: w * 0.12, y: h * 0.9 }, { x: w * 0.88, y: h * 0.9 },
+      ]);
+      rectangle(0, h * 0.88, w, h * 0.12);
+      break;
+    case 'skateboard':
+      rectangle(0, 0, w, h * 0.42);
+      rectangle(w * 0.2, h * 0.38, w * 0.6, h * 0.15);
+      circle(w * 0.24, h * 0.74, h * 0.26);
+      circle(w * 0.76, h * 0.74, h * 0.26);
+      break;
+    case 'teapot':
+      circle(w * 0.46, h * 0.59, h * 0.32);
+      rectangle(w * 0.18, h * 0.25, w * 0.5, h * 0.12);
+      circle(w * 0.46, h * 0.12, h * 0.1);
+      polygon([
+        { x: w * 0.63, y: h * 0.48 }, { x: w, y: h * 0.24 },
+        { x: w * 0.94, y: h * 0.53 }, { x: w * 0.68, y: h * 0.72 },
+      ]);
+      rectangle(0, h * 0.37, w * 0.12, h * 0.35);
+      rectangle(w * 0.07, h * 0.32, w * 0.18, h * 0.1);
+      rectangle(w * 0.07, h * 0.68, w * 0.18, h * 0.1);
+      rectangle(w * 0.19, h * 0.88, w * 0.48, h * 0.12);
+      break;
+    case 'accordion':
+      rectangle(0, 0, w * 0.22, h);
+      rectangle(w * 0.2, h * 0.07, w * 0.6, h * 0.86);
+      rectangle(w * 0.78, 0, w * 0.22, h);
+      break;
+    case 'arcade':
+      polygon([
+        { x: w * 0.08, y: 0 }, { x: w * 0.88, y: 0 },
+        { x: w * 0.88, y: h * 0.4 }, { x: w * 0.04, y: h * 0.4 },
+      ]);
+      polygon([
+        { x: w * 0.04, y: h * 0.4 }, { x: w * 0.88, y: h * 0.4 }, { x: w, y: h * 0.5 },
+        { x: w * 0.88, y: h }, { x: 0, y: h },
+      ]);
+      break;
+    case 'balloon':
+      circle(w * 0.5, h * 0.36, w * 0.5);
+      rectangle(w * 0.28, h * 0.68, w * 0.04, h * 0.18);
+      rectangle(w * 0.68, h * 0.68, w * 0.04, h * 0.18);
+      rectangle(w * 0.25, h * 0.83, w * 0.5, h * 0.17);
+      break;
     default:
       if (def.shape === 'circle') circle(w / 2, h / 2, w / 2);
       else if (def.shape === 'trapezoid') polygon([

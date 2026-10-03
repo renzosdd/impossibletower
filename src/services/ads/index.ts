@@ -1,5 +1,6 @@
 export interface AdResult {
   success: boolean;
+  evidence?: 'browser-callback' | 'simulation';
 }
 
 export interface AdProvider {
@@ -318,7 +319,12 @@ export function createAdProvider(): AdProvider {
     case 'standalone': {
       const client = String(import.meta.env.VITE_GOOGLE_ADSENSE_CLIENT ?? '').trim();
       if (String(import.meta.env.VITE_AD_PROVIDER ?? '').toLowerCase() === 'google-h5' && isGooglePublisher(client)) {
-        return new GoogleH5AdProvider({ client, channel: String(import.meta.env.VITE_GOOGLE_ADSENSE_CHANNEL ?? '').trim() });
+        return new GoogleH5AdProvider({
+          client,
+          channel: String(import.meta.env.VITE_GOOGLE_ADSENSE_CHANNEL ?? '').trim(),
+          testMode: String(import.meta.env.VITE_GOOGLE_H5_TEST_MODE ?? '').toLowerCase() === 'true',
+          deploymentContext: import.meta.env.DEV ? 'development' : import.meta.env.VITE_AD_DEPLOY_CONTEXT === 'deploy-preview' ? 'preview' : 'production',
+        });
       }
       return new MockAdProvider();
     }

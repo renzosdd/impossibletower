@@ -9,6 +9,7 @@ export function createObjectTextures(scene:Phaser.Scene) {
   const rect=(x:number,y:number,a:number,b:number,c=color,r=5)=>{g.fillStyle(c);g.fillRoundedRect(x,y,a,b,r);};
   const line=(x:number,y:number,a:number,b:number,c=dark,alpha=.3)=>{g.lineStyle(2,c,alpha);g.lineBetween(x,y,a,b);};
   const circle=(x:number,y:number,r:number,c:number)=>{g.fillStyle(c);g.fillCircle(x,y,r);};
+  const polygon=(points:{x:number;y:number}[],c=color)=>{g.fillStyle(c);g.fillPoints(points,true);};
   g.fillStyle(color);g.fillRoundedRect(0,0,w,h,5);
   g.fillStyle(0xffffff,.2);g.fillRoundedRect(2,2,w-4,Math.max(4,h*.12),3);
   g.fillStyle(dark,.18);g.fillRect(w-8,6,8,h-6);g.fillRect(3,h-7,w-3,7);
@@ -31,6 +32,31 @@ export function createObjectTextures(scene:Phaser.Scene) {
    case 'rocket':g.clear();rect(w*.19,h*.18,w*.62,h*.66,cream,w*.2);g.fillStyle(color);g.fillTriangle(w*.19,h*.2,w*.5,0,w*.81,h*.2);g.fillTriangle(0,h,w*.23,h*.56,w*.3,h*.87);g.fillTriangle(w,h,w*.77,h*.56,w*.7,h*.87);circle(w*.5,h*.37,w*.17,dark);circle(w*.5,h*.37,w*.11,0x9ad2da);rect(w*.35,h*.84,w*.3,h*.16,color,2);break;
    case 'ball':g.clear();circle(w*.5,h*.5,w*.5,color);g.lineStyle(3,cream,.65);g.strokeCircle(w*.5,h*.5,w*.33);line(w*.5,0,w*.5,h,cream,.65);line(0,h*.5,w,h*.5,cream,.65);break;
    case 'satellite':g.clear();rect(0,h*.23,w*.3,h*.52,0x86bcc1,1);rect(w*.7,h*.23,w*.3,h*.52,0x86bcc1,1);rect(w*.3,h*.05,w*.4,h*.85);circle(w*.5,h*.3,h*.16,cream);for(let i=1;i<3;i++){line(w*.1*i,h*.25,w*.1*i,h*.75);line(w*.7+w*.1*i,h*.25,w*.7+w*.1*i,h*.75);}break;
+   case 'books':
+    rect(0,0,w,h*.34,color,3);rect(0,h*.33,w,h*.34,0x99b4d8,3);rect(0,h*.66,w,h*.34,0xe5a5b9,3);
+    for(let i=0;i<3;i++){rect(8,h*(i/3)+4,w-17,h*.19,cream,1);line(12,h*(i/3)+h*.16,w-15,h*(i/3)+h*.16,dark,.15);}break;
+   case 'trunk':
+    line(2,h*.35,w-2,h*.35);rect(w*.16,2,9,h-4,cream,1);rect(w*.76,2,9,h-4,cream,1);rect(w*.43,h*.3,w*.14,h*.16,dark,2);rect(w*.39,h*.62,w*.22,7,dark,2);break;
+   case 'microwave':
+    rect(7,8,w*.68,h-16,dark,4);rect(11,12,w*.59,h-24,0x86bcc1,3);line(14,18,w*.61,18,cream,.6);rect(w*.7,h*.31,4,h*.36,cream,1);circle(w*.86,h*.34,5,dark);circle(w*.86,h*.62,4,cream);break;
+   case 'toaster':
+    g.clear();rect(w*.18,0,w*.23,h*.25,0xe5a35c,4);rect(w*.55,0,w*.23,h*.25,0xe5a35c,4);rect(w*.21,3,w*.17,h*.16,cream,2);rect(w*.58,3,w*.17,h*.16,cream,2);rect(0,h*.18,w,h*.82,color,7);line(w*.18,h*.25,w*.78,h*.25,cream,.8);circle(w*.75,h*.63,6,dark);rect(w*.12,h*.53,w*.25,8,cream,2);break;
+   case 'television':
+    g.clear();rect(0,0,w,h*.75,color,6);rect(w*.43,h*.74,w*.14,h*.18,dark,1);rect(w*.18,h*.9,w*.64,h*.1,dark,2);rect(7,7,w*.71,h*.58,dark,7);rect(11,11,w*.62,h*.49,0x86bcc1,5);line(17,18,w*.56,18,cream,.5);circle(w*.88,h*.25,4,cream);circle(w*.88,h*.43,4,dark);break;
+   case 'planter':
+    g.clear();rect(w*.46,h*.16,w*.08,h*.38,0x67b9a1,1);polygon([{x:w*.5,y:h*.28},{x:w*.08,y:h*.1},{x:w*.13,y:0},{x:w*.46,y:h*.13}],0x67b9a1);polygon([{x:w*.5,y:h*.4},{x:w*.96,y:h*.17},{x:w*.96,y:h*.08},{x:w*.58,y:h*.22}],0x82c8b5);polygon([{x:0,y:h*.46},{x:w,y:h*.46},{x:w*.8,y:h},{x:w*.2,y:h}]);rect(1,h*.46,w-2,8,cream,2);line(w*.3,h*.64,w*.36,h*.9,cream,.45);break;
+   case 'traffic-cone':
+    g.clear();polygon([{x:w*.5,y:0},{x:w*.12,y:h*.9},{x:w*.88,y:h*.9}]);polygon([{x:w*.373,y:h*.3},{x:w*.627,y:h*.3},{x:w*.678,y:h*.42},{x:w*.322,y:h*.42}],cream);polygon([{x:w*.255,y:h*.58},{x:w*.745,y:h*.58},{x:w*.796,y:h*.7},{x:w*.204,y:h*.7}],cream);rect(0,h*.88,w,h*.12,color,3);break;
+   case 'skateboard':
+    g.clear();rect(w*.2,h*.38,w*.6,h*.15,dark,1);circle(w*.24,h*.74,h*.26,dark);circle(w*.76,h*.74,h*.26,dark);circle(w*.24,h*.74,h*.13,cream);circle(w*.76,h*.74,h*.13,cream);rect(0,0,w,h*.42,color,5);line(9,h*.2,w-9,h*.2,cream,.6);break;
+   case 'teapot':
+    g.clear();rect(0,h*.37,w*.12,h*.35,color,2);rect(w*.07,h*.32,w*.18,h*.1,color,2);rect(w*.07,h*.68,w*.18,h*.1,color,2);polygon([{x:w*.63,y:h*.48},{x:w,y:h*.24},{x:w*.94,y:h*.53},{x:w*.68,y:h*.72}]);circle(w*.46,h*.59,h*.32,color);rect(w*.18,h*.25,w*.5,h*.12,cream,3);circle(w*.46,h*.12,h*.1,color);rect(w*.19,h*.88,w*.48,h*.12,color,2);circle(w*.35,h*.54,5,cream);line(w*.25,h*.76,w*.53,h*.76,cream,.5);break;
+   case 'accordion':
+    g.clear();rect(0,0,w*.22,h,color,3);rect(w*.2,h*.07,w*.6,h*.86,0x796f9e,2);rect(w*.78,0,w*.22,h,color,3);for(let x=w*.26;x<w*.77;x+=7)line(x,h*.11,x,h*.89,cream,.45);rect(3,6,w*.15,h-12,cream,1);for(let y=13;y<h-10;y+=10)line(3,y,w*.16,y,dark,.5);for(let y=12;y<h-8;y+=12)circle(w*.88,y,3,cream);break;
+   case 'arcade':
+    g.clear();polygon([{x:w*.08,y:0},{x:w*.88,y:0},{x:w*.88,y:h*.4},{x:w,y:h*.5},{x:w*.88,y:h},{x:0,y:h}]);rect(w*.15,5,w*.65,12,0xed826e,2);rect(w*.16,h*.17,w*.61,h*.24,dark,3);rect(w*.21,h*.21,w*.51,h*.16,0x86bcc1,2);circle(w*.66,h*.29,4,cream);rect(w*.13,h*.46,w*.72,10,0xed826e,2);circle(w*.28,h*.47,3,dark);circle(w*.62,h*.5,3,cream);rect(w*.27,h*.72,w*.3,13,dark,2);break;
+   case 'balloon':
+    g.clear();rect(w*.28,h*.68,w*.04,h*.18,dark,1);rect(w*.68,h*.68,w*.04,h*.18,dark,1);circle(w*.5,h*.36,w*.5,color);g.fillStyle(cream);g.fillEllipse(w*.5,h*.36,w*.4,w*.96);rect(w*.25,h*.83,w*.5,h*.17,0xc48d56,3);line(w*.28,h*.89,w*.72,h*.89,cream,.45);line(w*.39,h*.86,w*.39,h*.98,dark,.3);line(w*.6,h*.86,w*.6,h*.98,dark,.3);break;
   }
   g.generateTexture('object-'+def.id,Math.ceil(w),Math.ceil(h));g.destroy();
  }

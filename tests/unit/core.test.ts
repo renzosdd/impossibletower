@@ -27,7 +27,7 @@ describe('fair, deterministic challenge sequences', () => {
       expect(objectAt('staged', index).difficultyWeight).toBeLessThanOrEqual(index < 5 ? 2 : 3);
       expect(objectAt('staged', index).rare).not.toBe(true);
     }
-    expect(new Set(OBJECTS.map(object => object.id)).size).toBe(18);
+    expect(new Set(OBJECTS.map(object => object.id)).size).toBe(30);
     expect(OBJECTS.every(object => object.mass > 0 && object.width > 0 && object.height > 0)).toBe(true);
     const later = Array.from({ length: 300 }, (_, index) => objectAt('rare-fairness', index + 26));
     expect(later.some(object => object.rare)).toBe(true);

@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RunResult } from '../../src/types';
 
 const mocks = vi.hoisted(() => ({
-  getSession: vi.fn(), signInAnonymously: vi.fn(), rpc: vi.fn(),
+  getSession: vi.fn(), signInAnonymously: vi.fn(), startAutoRefresh: vi.fn(), rpc: vi.fn(),
 }));
 vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => ({ auth: { getSession: mocks.getSession, signInAnonymously: mocks.signInAnonymously }, rpc: mocks.rpc })),
+  createClient: vi.fn(() => ({ auth: { getSession: mocks.getSession, signInAnonymously: mocks.signInAnonymously, startAutoRefresh:mocks.startAutoRefresh }, rpc: mocks.rpc })),
 }));
 
 import { BackendService, isPlausibleRun, isValidChallenge, sanitizePublicName } from '../../src/services/backend';
@@ -52,6 +52,13 @@ describe('backend input policy', () => {
 });
 
 describe('optional backend', () => {
+  it('does not refresh Auth until the caller initializes permitted online services', async () => {
+    const backend = new BackendService(config);
+    expect(createClient).toHaveBeenCalledWith(config.url,config.publishableKey,expect.objectContaining({auth:expect.objectContaining({autoRefreshToken:false})}));
+    expect(mocks.startAutoRefresh).not.toHaveBeenCalled();
+    await backend.initialize();
+    expect(mocks.startAutoRefresh).toHaveBeenCalledOnce();
+  });
   it('prefers the publishable key and reads the current environment names', () => {
     vi.stubEnv('VITE_SUPABASE_URL', ' https://example.supabase.co/ ');
     vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', ' sb_publishable_preferred ');

@@ -1,83 +1,107 @@
 # Supabase opcional
 
-El juego, sus récords locales, monedas, Daily Tower y los enlaces de desafío funcionan sin Supabase. No hacen falta credenciales para desarrollar, ejecutar tests o generar el build.
+El juego conserva progreso, coins y desafíos locales sin Supabase. La cuenta recuperable, wallet online y rankings con premios requieren activar V2. No hacen falta credenciales para ejecutar los tests o generar el build.
 
-## Activación
+La [guía de integraciones](../docs/INTEGRATIONS.md) reúne el paso a paso de Supabase, Netlify Functions, Google H5 y PayPal. No se aplicó ninguna migración a un proyecto remoto durante esta implementación.
 
-1. Creá un proyecto Supabase propio.
-2. Activá **Authentication → Providers → Anonymous Sign-ins**. No se solicita email, contraseña ni información personal.
-3. Ejecutá el contenido completo de [la migración](migrations/20261003021023_tower_backend.sql) en el SQL Editor del proyecto. Está preparada para un proyecto nuevo. Si utilizás el CLI, incorporala a tu flujo habitual de migrations y revisá `supabase db push --help` antes de aplicar.
-4. Copiá `.env.example` a `.env.local` en la raíz del juego y completá:
+## Configuración y migraciones
 
-   ```dotenv
-   VITE_SUPABASE_URL=https://TU-PROYECTO.supabase.co
-   VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_TU-CLAVE-PUBLICA
-   ```
+1. Crear un proyecto Supabase de pruebas. Habilitar **Anonymous Sign-ins**, proveedor **Email** y **Allow manual linking**. Configurar Site URL y redirects del entorno. Incluir `{{ .Token }}` en las plantillas Magic Link y Change Email; probar entrega con SMTP. La vinculación usa OTP `email_change`; la recuperación de una cuenta existente usa `email`.
+2. Aplicar solamente las migraciones pendientes, en este orden:
+   - [V1: perfiles, resultados y desafíos](migrations/20261003021023_tower_backend.sql).
+   - [V2: economía, tickets, rankings y pagos](migrations/20261003200135_tower_economy_v2.sql).
+3. Respaldar un proyecto con datos y comprobar su historial antes de aplicar SQL. No repetir una migración existente. Los archivos se crearon con `supabase migration new` usando CLI 2.119.0; no equivalen a una migración aplicada en producción.
+4. Mantener `public` en Data API y dejar `tower_private` y `tower_economy` fuera de los schemas expuestos. Verificar grants, RLS y Database Advisors en el proyecto real.
+5. Configurar Build en Netlify y reconstruir:
 
-   `VITE_SUPABASE_PUBLISHABLE_KEY` tiene prioridad. Si está vacía, `VITE_SUPABASE_ANON_KEY` permite una clave publicable o un JWT legacy con rol `anon`. El cliente desactiva Supabase si la clave tiene formato inválido, es `sb_secret_...` o es un JWT con otro rol. La URL debe usar HTTPS, sin credenciales, query, fragmento ni ruta de API; HTTP solo se admite en localhost, 127.0.0.1 o ::1.
+```dotenv
+VITE_SUPABASE_URL=https://TU-PROYECTO.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_TU-CLAVE-PUBLICA
+VITE_SERVER_ECONOMY_ENABLED=false
+VITE_SERVER_RANKINGS_ENABLED=false
+VITE_RANKING_PERIODS=daily
+VITE_PAYPAL_ENABLED=false
+```
 
-   Estas variables se incluyen en el navegador incluso si el cliente rechaza su configuración: **nunca uses `service_role`, `sb_secret_...`, una contraseña de base de datos o un access token**. Las [claves publicables](https://supabase.com/docs/guides/api/api-keys) son la opción recomendada para frontend.
-5. Reiniciá Vite o regenerá el build. Verificá que `public` esté habilitado en Data API. El esquema `tower_private` debe permanecer fuera de los esquemas expuestos.
-6. Completá una partida normal, consultá TODAY / ALL TIME y compartí un desafío. Una tabla vacía muestra jugadores reales solamente después de recibir resultados; no se generan rankings ficticios.
+`VITE_SUPABASE_PUBLISHABLE_KEY` tiene prioridad; `VITE_SUPABASE_ANON_KEY` es compatible cuando no se usa publishable. La URL debe ser HTTPS, sin credenciales, query, fragmento ni ruta de API; HTTP solo se admite en localhost. El cliente rechaza claves secretas y JWT con otro rol, pero cualquier `VITE_*` se incorpora al frontend: nunca incluir `service_role`, `sb_secret_...`, contraseñas ni access tokens. [Claves públicas](https://supabase.com/docs/guides/api/api-keys).
 
-No se creó, modificó ni desplegó un proyecto remoto durante el desarrollo. Verificá Auth, Data API y los Database Advisors de tu proyecto antes de publicar.
+La economía también requiere variables con alcance **Functions**, sin prefijo `VITE_`:
 
-## Modelo de acceso
+```dotenv
+SUPABASE_URL=https://TU-PROYECTO.supabase.co
+SUPABASE_SECRET_KEY=SECRETO_SOLO_SERVIDOR
+APP_URL=https://TU-SITIO.netlify.app
+REPLAY_WORKER_SECRET=SECRETO_ALEATORIO_DISTINTO
+SERVER_ECONOMY_ENABLED=false
+SERVER_RANKINGS_ENABLED=false
+SERVER_RANKING_PERIODS=daily
+SERVER_AD_REWARDS_ENABLED=false
+SERVER_PAYPAL_ENABLED=false
+SERVER_OBJECT_CATALOG=extended-24
+```
 
-| Tabla | Datos | Acceso directo del navegador |
+`SUPABASE_SERVICE_ROLE_KEY` es el fallback legacy del secreto. No guardar estos valores en Git, `netlify.toml`, HTML, logs ni assets. Usar proyectos y secretos distintos en pruebas y producción. Vite dev/preview no ejecuta Netlify Functions.
+
+## Activación por etapas
+
+| Etapa | Flags | Comprobación antes de ampliar |
 | --- | --- | --- |
-| `profiles` | Pseudónimo, perfil de progreso privado y mejor altura validada | Solo SELECT de la fila propia |
-| `scores` | Resultados aceptados y duración en segundos | Solo SELECT de filas propias |
-| `daily_scores` | Mejor resultado diario e intentos aceptados | Solo SELECT de filas propias |
-| `challenges` | Seed, objetivo y pseudónimo del creador | Solo SELECT de desafíos propios |
+| Cuenta y wallet | `VITE_SERVER_ECONOMY_ENABLED=true`, `SERVER_ECONOMY_ENABLED=true` | OTP real en dos navegadores, starter único, inventario y replay alojado |
+| Ranking diario | Ambos flags `SERVER_RANKINGS_ENABLED` / `VITE_SERVER_RANKINGS_ENABLED` en `true`; ambos períodos en `daily` | Cierre UTC, desempates y premios idempotentes |
+| Semanal | Ambos períodos en `daily,weekly` | Mejores cinco días, mínimo tres y cierre semanal |
+| Mensual | Ambos períodos en `daily,weekly,monthly` | Mejores veinte días, mínimo diez y cierre mensual |
+| Anuncios online | `SERVER_AD_REWARDS_ENABLED=true` | Aprobación H5, CMP real y decisión explícita sobre callbacks falsificables |
+| Compra de coins | `SERVER_PAYPAL_ENABLED=true`, `VITE_PAYPAL_ENABLED=true`, sandbox inicialmente | Precio, Merchant ID, captura, webhook y devoluciones reales de prueba |
 
-Todas las tablas tienen RLS. No hay permisos INSERT, UPDATE ni DELETE para `anon` o `authenticated`: los únicos writes disponibles son los RPC `submit_run`, `sync_profile` y `create_challenge`, que extraen el propietario de `auth.uid()` y requieren autenticación.
+Los nombres de los períodos son `SERVER_RANKING_PERIODS` y `VITE_RANKING_PERIODS`. Mantener los demás flags apagados durante cada etapa. Google y PayPal tienen configuración adicional en la [guía](../docs/INTEGRATIONS.md); habilitar un flag no demuestra aprobación del proveedor.
 
-La migración incluye los permisos SELECT y EXECUTE explícitos necesarios. No depende de los permisos automáticos de tablas nuevas, que Supabase está [retirando por defecto](https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically). Los usuarios de [Anonymous Sign-ins](https://supabase.com/docs/guides/auth/auth-anonymous) usan el rol `authenticated`; el aislamiento se basa en `auth.uid()`, no solamente en ese rol.
+## Acceso y compatibilidad
 
-Los wrappers públicos son `SECURITY INVOKER`. Las implementaciones `SECURITY DEFINER` viven en `tower_private`, tienen `search_path = ''`, referencias de tablas calificadas y permisos EXECUTE limitados explícitamente. `read_leaderboard` y `load_challenge` son lecturas públicas intencionales: devuelven únicamente pseudónimo y altura, o los datos del desafío compartido. No publican UUID de usuario, sesiones ni el JSON privado del perfil.
+V1 conserva sus RPC y datos. Las tablas `profiles`, `scores`, `daily_scores` y `challenges` tienen RLS y SELECT propio; el navegador escribe únicamente mediante RPC autorizadas que usan `auth.uid()`. Los wrappers públicos son `SECURITY INVOKER`; sus implementaciones viven en `tower_private` con `SECURITY DEFINER`, `search_path=''` y permisos explícitos. Las lecturas públicas devuelven pseudónimos, alturas y desafíos, sin UUID, sesión o JSON privado del perfil.
 
-`sync_profile` guarda el progreso básico local como copia privada; V1 no restaura ni fusiona perfiles entre dispositivos ni valida una economía autoritativa de monedas. Los récords del ranking provienen exclusivamente de resultados aceptados, nunca del JSON de perfil.
+V2 mantiene once tablas con RLS dentro de `tower_economy`: wallet, inventario, ledger, límites diarios, tickets, usos de ayudas, cosméticos, anuncios, períodos, órdenes y eventos de pago. `anon` y `authenticated` no tienen acceso directo ni EXECUTE de `public.tower_account_api`. Ese wrapper y las funciones privadas son `SECURITY INVOKER` y se reservan a `service_role` desde Functions. La migración concede explícitamente acceso a `auth.users(id,email,email_confirmed_at)` para las verificaciones del servidor; no necesita leer contraseñas.
 
-## Validaciones y límites
+La Function valida el bearer con Supabase Auth y obtiene allí el propietario. El body no elige usuario ni puede solicitar acciones privadas de acreditación. Un usuario anónimo tiene rol Postgres `authenticated`; ese rol no demuestra email verificado. [Auth anónima](https://supabase.com/docs/guides/auth/auth-anonymous).
 
-- Modos permitidos: `casual`, `daily`, `challenge`.
-- Seed: 1–96 caracteres ASCII de letras, números, `:`, `_` y `-`.
-- Altura: 0–5.000 metros, también limitada a `objetos × 20 + 1`.
-- Objetos: entero entre 0 y 500. Perfect drops y combo máximo no superan ese total.
-- Score: entero entre 0 y 1.000.000; rango coherente con la altura, objetos y máximos de bonus de V1.
-- Duración: entre `max(0,5; objetos × 0,65)` y 2.400 segundos.
-- Second Chance marca la partida como asistida; el cliente y el RPC rechazan su envío al ranking. Double Coins no modifica score ni altura.
-- Daily exige exactamente `tower:daily:YYYY-MM-DD:v1` para la fecha UTC actual del servidor. Una partida enviada después del cambio de día conserva su resultado local, pero no entra al ranking del día anterior.
-- RPC de resultados: al menos 3 segundos entre envíos del mismo usuario y máximo 30 por minuto.
-- Desafíos: máximo 8 por minuto y 100 por día por propietario. Deben corresponder al seed, altura y score de una partida previamente aceptada de ese propietario.
-- Un advisory lock transaccional por usuario evita que requests simultáneos eludan los límites.
-- Pseudónimos: letras, números, espacios, guion y guion bajo; máximo 24 caracteres, también sanitizados en SQL.
-- Perfil JSON: versión 2, objeto de máximo 64 KiB.
+El wallet anónimo empieza en cero. El starter de 100 coins se acredita una vez al confirmar email, conservando el mismo UID. Compras, inventario, tickets y recompensas online requieren cuenta recuperable. Recuperar esa cuenta en otro navegador recupera wallet e inventario; no importa ni fusiona coins locales. `sync_profile` de V1 continúa como respaldo privado del perfil local y no autoriza créditos V2.
 
-Las solicitudes HTTP se abortan después de 5 segundos; los bloqueos de Auth y RPC también tienen un límite de espera. Los errores se registran en `BackendService.lastError`, las listas fallidas devuelven `[]`, y los desafíos fallidos devuelven `null` para continuar con el enlace autocontenido. Los resultados locales nunca dependen de una respuesta del backend.
+El público mínimo es 13 años; las funciones online de adolescentes requieren autorización del adulto responsable. Edad y tutela son autodeclaraciones, no verificaciones. Compras y publicidad se restringen a adultos. Completar la revisión legal y de consentimiento antes de monetizar.
 
-## Límites de seguridad de V1
+## Recompensas y verificación del juego
 
-Estas reglas son validaciones básicas, **no un sistema anti-cheat perfecto**. Un cliente modificado puede inventar resultados dentro de los límites, omitir el indicador de ayuda o crear identidades anónimas adicionales. La física y duración todavía no se reproducen en el servidor. El rate limit es por identidad autenticada, no un bloqueo global por IP.
+- Base de partidas, récord personal y duplicación comparten un límite de 300 coins por día UTC. Récord: hasta 10 coins una vez por día; duplicación: solo la base de esa partida.
+- Misiones: hasta 25 coins diarios fuera de ese límite. Bono publicitario: 25 coins, hasta tres al día, también aparte.
+- Máximo dos ayudas distintas por torre; Guía 5 y Guía 10 son excluyentes. Se reservan al crear ticket y se consumen únicamente al autorizar su activación. El replay debe coincidir con los usos y ticks registrados.
+- V2 permite ayudas autorizadas, incluyendo cambio de pieza y segunda oportunidad, en rankings. V1 conserva la exclusión de partidas asistidas. Los resultados y reglas de ambas versiones no se mezclan.
+- Daily requiere al menos cinco objetos y email confirmado. Semanal suma los cinco mejores días; mensual, los veinte mejores. Los premios dependen de participantes elegibles y se acreditan desde servidor una sola vez.
+- Ticket: 60 minutos reales y hasta 40 activos. El servidor fija seed, catálogo y reglaset; el catálogo Daily queda congelado. La publicación debe preservar el contrato físico de ese reglaset.
+- El cliente envía eventos y tick final; `replay-background` reproduce la simulación compartida antes de aceptar métricas. Los resultados empiezan pendientes. Un fallo de infraestructura excluye el intento y devuelve una vez las ayudas pagadas efectivamente consumidas.
+- Cierre de períodos: 75 minutos después del fin UTC. `settle` despacha cada cinco minutos los workers protegidos `replay-background` y `settle-background`. Cada liquidación procesa hasta tres períodos, cien timeouts y cien tickets vencidos; los premios de un período se guardan atómicamente y no se duplican al reintentar.
 
-`scores.drop_events` reserva espacio para una futura secuencia limitada de eventos de cada drop. El RPC de V1 no permite escribirla. La siguiente versión puede emitir un ticket de inicio, registrar índice/objeto/x/tiempo, verificar el RNG y reproducir la simulación server-side antes de aprobar resultados.
+Consultar las reglas completas en `/reglas-ranking/` y el [plan por etapas](../docs/ROADMAP.md). Los callbacks de Google H5 no son comprobantes SSV firmados: un cliente modificado puede falsificarlos. El flag de recompensas publicitarias online permanece apagado hasta aceptar y documentar ese riesgo.
 
-Las cuentas anónimas dependen del almacenamiento del navegador: borrar datos o cambiar de dispositivo crea una identidad nueva. Configurá límites de Auth y evaluá CAPTCHA/Turnstile para un lanzamiento público; V1 no incluye su UI ni un proveedor de CAPTCHA.
+PayPal fija packs y precios en servidor. La captura canónica validada puede acreditar coins; el webhook verificado usa el mismo identificador para conciliación idempotente. Las devoluciones revierten coins de forma proporcional y pueden dejar deuda; nuevas ganancias reducen esa deuda. Live requiere aprobación separada además de los flags habituales. No se comprobaron pagos reales.
 
-## Verificación realizada
+## Fallos y límites de seguridad
 
-- El 3 de octubre de 2026 se aprobaron 16 tests unitarios del cliente: prioridad y compatibilidad de claves públicas, rechazo de credenciales privadas y URL inválidas, ausencia de configuración, anonimato y recuperación tras fallos, pseudónimos, resultados inválidos, partidas asistidas, fallos y timeout. Auth y RPC se simulan en estos tests.
-- Ese día se volvió a ejecutar la migración sobre PostgreSQL mediante PGlite 0.3.14 en un entorno temporal, con Node 24.19.0. Pasaron 25 comprobaciones de RPC, validaciones, límites, aislamiento RLS por propietario, lectura pública, desafío y ranking UTC. No se modificó la migración.
-- PGlite utilizó roles y `auth.uid()` de prueba. No verifica el Auth HTTP de Supabase, configuración de Data API ni un proyecto alojado real.
+El juego local continúa cuando Auth, cuenta, anuncios o pagos no responden. No concede créditos online optimistas. Las solicitudes y Auth tienen límites de espera; la activación de ayudas reintenta con el mismo identificador para recuperar una respuesta perdida. No se garantiza una operación online sin conexión.
 
-La migración fue creada con `supabase migration new tower_backend` (CLI 2.119.0). No requiere un servicio de pago adicional.
+V1 solo valida rangos, coherencia y límites por identidad; un cliente modificado puede inventar resultados compatibles. V2 comprueba el resultado físico de los eventos, pero no identifica personas ni impide bots, cuentas múltiples o búsqueda automatizada. No constituye anti-cheat completo. Configurar límites reales de Auth y evaluar protección contra abuso antes de abrir premios o compras.
 
-Para repetir las comprobaciones SQL sin credenciales ni Docker, instalá la dependencia de verificación en una carpeta temporal y ejecutá el script desde la raíz del juego:
+## Verificación local y pendientes
+
+El 3 de octubre de 2026, con Node 24.19.0 y PGlite 0.3.14, se aprobaron **99 comprobaciones SQL: 25 V1 + 74 V2**. V1 cubre RPC, límites, RLS por propietario y lecturas públicas. V2 cubre wallet, ledger inmutable, idempotencia, límites, ayudas, premios, cierres por lotes, pagos fuera de orden y permisos de Auth. El fixture V2 no concede SELECT general sobre `auth.users`: permite solo las tres columnas necesarias y comprueba que contraseñas, SELECT general y accesos de `anon`/`authenticated` fallen.
+
+Son bases efímeras con roles, Auth y resultados aceptados de prueba. Los tests unitarios también simulan Auth y APIs de pago. Esto no verifica Supabase Auth HTTP, entrega de emails, Data API, aislamiento de sesiones alojadas, RPC reales, cron de Netlify, anuncios reales ni PayPal sandbox/live.
+
+Antes de activar V2, comprobar en el proyecto real dos cuentas recuperables y una sesión anónima: aislamiento de perfiles y operaciones, rechazo de owner ajeno y RPC privadas, permisos de columnas Auth, carrera/reintento de compras y ayudas, replay, liquidación y devoluciones. Registrar entorno, fecha y resultado por separado; la implementación y los tests locales no sustituyen esa comprobación.
+
+Para repetir SQL sin credenciales ni Docker, desde la raíz del juego:
 
 ```bash
 npm install --prefix /tmp/tower-db-check --no-audit --no-fund @electric-sql/pglite@0.3.14
 TOWER_PGLITE_MODULE=/tmp/tower-db-check/node_modules/@electric-sql/pglite/dist/index.js node supabase/tests/backend.contract.mjs
+TOWER_PGLITE_MODULE=/tmp/tower-db-check/node_modules/@electric-sql/pglite/dist/index.js node supabase/tests/economy.contract.mjs
 ```
 
-El script crea una base efímera en memoria; no se conecta al proyecto Supabase ni agrega dependencias al juego.
+Usar Node 22.12 o posterior. Los scripts no se conectan a Supabase ni agregan dependencias al juego.

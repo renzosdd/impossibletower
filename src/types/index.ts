@@ -1,9 +1,11 @@
 export type GameMode = 'casual' | 'daily' | 'challenge';
 export type Accuracy = 'PERFECT' | 'GREAT' | 'GOOD' | 'RISKY';
 export interface ObjectDefinition { id: string; name: string; width: number; height: number; mass: number; friction: number; restitution: number; centerOfMassOffset?: {x:number;y:number}; difficultyWeight:number; visualType:string; color:string; material:'wood'|'metal'|'soft'|'ceramic'; shape?:'rectangle'|'circle'|'trapezoid'; rare?:boolean; }
-export interface Challenge { version:1; seed:string; height:number; score:number; name?:string; }
-export interface RunConfig { mode:GameMode; seed:string; challenge?:Challenge; }
-export interface RunStats { mode:GameMode; seed:string; height:number; score:number; objectsPlaced:number; perfectDrops:number; combo:number; maxCombo:number; maxPerfectCombo?:number; assisted?:boolean; duration:number; objectIds:string[]; }
+export type ObjectCatalog = 'legacy-18' | 'extended-24' | 'extended-30';
+export type AidId = 'guide-5' | 'guide-10' | 'preview' | 'focus' | 'skip' | 'second-chance';
+export interface Challenge { version:1 | 2; seed:string; height:number; score:number; name?:string; catalog?:ObjectCatalog; }
+export interface RunConfig { mode:GameMode; seed:string; challenge?:Challenge; catalog?:ObjectCatalog; ruleset?:'v2'; }
+export interface RunStats { mode:GameMode; seed:string; height:number; score:number; objectsPlaced:number; perfectDrops:number; combo:number; maxCombo:number; maxPerfectCombo?:number; assisted?:boolean; duration:number; objectIds:string[]; catalog?:ObjectCatalog; aidsUsed?:AidId[]; }
 export interface RunResult extends RunStats { reason:'miss'|'collapse'|'timeout'; coins:number; personalBest:boolean; challengeWon?:boolean; moments:string[]; }
 export interface GameSnapshot extends RunStats { state:'ready'|'falling'|'settling'|'over'|'paused'; nextObject:string; accuracy?:Accuracy; fps:number; }
 export interface Settings { music:boolean; sfx:boolean; haptics:boolean; }

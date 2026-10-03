@@ -14,12 +14,14 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.2",
-    "matter-js": "^0.20.0",
+    "matter-js": "0.20.0",
     "phaser": "^3.90.0"
   },
   "devDependencies": {
+    "@netlify/functions": "4.3.0",
     "@playwright/test": "^1.55.1",
     "@types/matter-js": "^0.20.2",
+    "@types/node": "26.6.4",
     "agent-browser": "^0.38.2",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",

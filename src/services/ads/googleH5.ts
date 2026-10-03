@@ -1,4 +1,5 @@
 import type { AdProvider, AdResult } from './index';
+import { privacyConsent, type PrivacyConsentService } from '../privacy';
 
 const INITIALIZE_TIMEOUT_MS = 8_000;
 const AD_TIMEOUT_MS = 120_000;
@@ -7,6 +8,9 @@ const SCRIPT_SOURCE = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoog
 export interface GoogleH5Configuration {
   client: string;
   channel?: string;
+  privacy?: PrivacyConsentService;
+  testMode?: boolean;
+  deploymentContext?: 'production' | 'preview' | 'development';
 }
 
 export interface GoogleAdPlacement {
@@ -41,16 +45,41 @@ export class GoogleH5AdProvider implements AdProvider {
   private ready = false;
   private active = false;
   private sdk: GoogleWindow | null = null;
+  private readonly privacy: PrivacyConsentService;
+  private ownedScript: HTMLScriptElement | null = null;
+  private cancelInitialization?: () => void;
+  private cancelReward?: () => void;
 
-  constructor(private readonly configuration: GoogleH5Configuration) {}
+  constructor(private readonly configuration: GoogleH5Configuration) {
+    this.privacy = configuration.privacy ?? privacyConsent;
+    this.privacy.subscribe(() => {
+      if (this.permissionGranted()) return;
+      this.ready = false;
+      this.cancelInitialization?.();
+      this.initialization = undefined;
+      this.cancelReward?.();
+      this.ownedScript?.remove();
+      this.ownedScript = null;
+    });
+  }
+
+  private permissionGranted(): boolean {
+    if (this.configuration.testMode && !['preview', 'development'].includes(this.configuration.deploymentContext ?? 'production')) return false;
+    return this.privacy.canRequestAds();
+  }
 
   initialize(): Promise<void> {
-    this.initialization ??= this.initializeSDK();
+    if (!this.permissionGranted()) return Promise.resolve();
+    if (!this.initialization) {
+      const initialization = this.initializeSDK();
+      this.initialization = initialization;
+      void initialization.then(() => { if (this.initialization === initialization && !this.ready) this.initialization = undefined; });
+    }
     return this.initialization;
   }
 
   private initializeSDK(): Promise<void> {
-    if (typeof window === 'undefined' || typeof document === 'undefined' || !isGooglePublisher(this.configuration.client)) {
+    if (typeof window === 'undefined' || typeof document === 'undefined' || !isGooglePublisher(this.configuration.client) || !this.permissionGranted()) {
       return Promise.resolve();
     }
     return new Promise((resolve) => {
@@ -62,11 +91,16 @@ export class GoogleH5AdProvider implements AdProvider {
         settled = true;
         clearTimeout(timeout);
         script?.removeEventListener('error', failed);
-        if (!ready && created) script?.remove();
-        this.ready = ready;
+        this.ready = ready && this.permissionGranted();
+        if (!this.ready && created) {
+          script?.remove();
+          if (this.ownedScript === script) this.ownedScript = null;
+        }
+        this.cancelInitialization = undefined;
         resolve();
       };
       const failed = () => finish(false);
+      this.cancelInitialization = failed;
       const timeout = setTimeout(failed, INITIALIZE_TIMEOUT_MS);
       try {
         const sdk = window as unknown as GoogleWindow;
@@ -76,6 +110,7 @@ export class GoogleH5AdProvider implements AdProvider {
         this.sdk = sdk;
         const source = `${SCRIPT_SOURCE}?client=${this.configuration.client}`;
         script = document.querySelector<HTMLScriptElement>(`script[src="${source}"]`);
+        if (script && (script.getAttribute('data-adbreak-test') === 'on') !== Boolean(this.configuration.testMode)) { failed(); return; }
         if (!script) {
           script = document.createElement('script');
           script.src = source;
@@ -83,7 +118,9 @@ export class GoogleH5AdProvider implements AdProvider {
           script.crossOrigin = 'anonymous';
           script.setAttribute('data-ad-client', this.configuration.client);
           if (this.configuration.channel) script.setAttribute('data-ad-channel', this.configuration.channel);
+          if (this.configuration.testMode) script.setAttribute('data-adbreak-test', 'on');
           created = true;
+          this.ownedScript = script;
         }
         script.addEventListener('error', failed);
         sdk.adConfig({ preloadAdBreaks: 'on', sound: 'off', onReady: () => finish(true) });
@@ -95,7 +132,7 @@ export class GoogleH5AdProvider implements AdProvider {
   }
 
   isRewardedAvailable(): boolean {
-    return this.ready && !this.active && typeof this.sdk?.adBreak === 'function';
+    return this.ready && !this.active && this.permissionGranted() && typeof this.sdk?.adBreak === 'function';
   }
 
   async commercialBreak(_context: string): Promise<void> {}
@@ -115,8 +152,10 @@ export class GoogleH5AdProvider implements AdProvider {
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
-          resolve(value);
+          this.cancelReward = undefined;
+          resolve(value && this.permissionGranted() && !this.configuration.testMode);
         };
+        this.cancelReward = () => finish(false);
         const timeout = setTimeout(() => {
           this.ready = false;
           finish(false);
@@ -127,6 +166,7 @@ export class GoogleH5AdProvider implements AdProvider {
             name: rewardType,
             beforeReward: (showAd) => {
               if (settled || offered) return;
+              if (!this.permissionGranted()) { finish(false); return; }
               offered = true;
               try { showAd(); } catch { finish(false); }
             },
@@ -140,7 +180,7 @@ export class GoogleH5AdProvider implements AdProvider {
           finish(false);
         }
       });
-      return { success };
+      return this.configuration.testMode ? { success: false, evidence: 'simulation' } : success ? { success: true, evidence: 'browser-callback' } : { success: false };
     } finally {
       this.active = false;
     }
