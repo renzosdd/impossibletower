@@ -23,7 +23,8 @@ async function debug(page: Page, command: string): Promise<void> {
   await page.evaluate(command => (window as unknown as { __tower: DebugController }).__tower.debug(command), command);
 }
 
-async function metrics(session: CDPSession, landscape: boolean, keyboard = false): Promise<void> {
+async function metrics(page: Page, session: CDPSession, landscape: boolean, keyboard = false): Promise<void> {
+  if (!keyboard) await page.setViewportSize({ width: landscape ? 851 : 393, height: landscape ? 393 : 851 });
   await session.send('Emulation.setDeviceMetricsOverride', {
     width: landscape ? 851 : 393,
     height: keyboard ? 260 : landscape ? 393 : 851,
@@ -34,6 +35,12 @@ async function metrics(session: CDPSession, landscape: boolean, keyboard = false
     screenOrientation: { type: landscape ? 'landscapePrimary' : 'portraitPrimary', angle: landscape ? 90 : 0 },
   });
 }
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(screen.orientation, 'lock', { configurable: true, value: () => Promise.reject(new DOMException('Portrait lock unsupported', 'NotSupportedError')) });
+  });
+});
 
 async function start(page: Page): Promise<void> {
   await page.goto('/?debug=1');
@@ -49,15 +56,16 @@ async function landFirstBox(page: Page): Promise<void> {
 
 test('mobile landscape blocks the menu and Escape cannot dismiss the guard', async ({ page, context }) => {
   const session = await context.newCDPSession(page);
-  await metrics(session, true);
+  await metrics(page, session, true);
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Girá tu dispositivo' })).toBeVisible();
   await expect(page.getByRole('button', { name: /^JUGAR$/i })).not.toBeVisible();
   await expect(page.locator('.desktop-context')).not.toBeVisible();
   await page.screenshot({ path: test.info().outputPath('landscape-guard.png') });
   await page.keyboard.press('Escape');
+  expect(await page.evaluate(() => screen.orientation.type)).toBe('landscape-primary');
   await expect(page.locator('#orientation-guard')).toBeVisible();
-  await metrics(session, false);
+  await metrics(page, session, false);
   await expect(page.locator('#orientation-guard')).not.toBeVisible();
   await expect(page.getByRole('button', { name: /^JUGAR$/i })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('portrait-menu.png') });
@@ -65,12 +73,12 @@ test('mobile landscape blocks the menu and Escape cannot dismiss the guard', asy
 
 test('rotation freezes a real tower and restores its seed, height, score and input', async ({ page, context }) => {
   const session = await context.newCDPSession(page);
-  await metrics(session, false);
+  await metrics(page, session, false);
   await start(page);
   await landFirstBox(page);
   const before = (await snapshot(page))!;
   await page.screenshot({ path: test.info().outputPath('portrait-tower.png') });
-  await metrics(session, true);
+  await metrics(page, session, true);
   await expect(page.locator('#orientation-guard')).toBeVisible();
   await expect.poll(async () => (await snapshot(page))?.state).toBe('paused');
   const paused = (await snapshot(page))!;
@@ -83,7 +91,7 @@ test('rotation freezes a real tower and restores its seed, height, score and inp
   expect(frozen.seed).toBe(before.seed);
   expect(frozen.height).toBe(before.height);
   expect(frozen.score).toBe(before.score);
-  await metrics(session, false);
+  await metrics(page, session, false);
   await expect(page.locator('#orientation-guard')).not.toBeVisible();
   await expect.poll(async () => (await snapshot(page))?.state).toBe('ready');
   await debug(page, 'center');
@@ -94,13 +102,13 @@ test('rotation freezes a real tower and restores its seed, height, score and inp
 
 test('manual pause remains after a landscape round trip', async ({ page, context }) => {
   const session = await context.newCDPSession(page);
-  await metrics(session, false);
+  await metrics(page, session, false);
   await start(page);
   await page.getByRole('button', { name: 'Pausar partida' }).click();
   await expect.poll(async () => (await snapshot(page))?.state).toBe('paused');
-  await metrics(session, true);
+  await metrics(page, session, true);
   await expect(page.locator('#orientation-guard')).toBeVisible();
-  await metrics(session, false);
+  await metrics(page, session, false);
   await expect(page.locator('#orientation-guard')).not.toBeVisible();
   await expect(page.getByRole('button', { name: /SEGUIR JUGANDO/i })).toBeVisible();
   expect((await snapshot(page))?.state).toBe('paused');
@@ -112,16 +120,16 @@ test('manual pause remains after a landscape round trip', async ({ page, context
 
 test('a portrait keyboard resize does not activate the rotation guard', async ({ page, context }) => {
   const session = await context.newCDPSession(page);
-  await metrics(session, false);
+  await metrics(page, session, false);
   await page.goto('/');
   await page.getByRole('button', { name: /AJUSTES/i }).click();
   await page.getByRole('textbox', { name: /NOMBRE PÚBLICO/i }).fill('Teclado');
-  await metrics(session, false, true);
+  await metrics(page, session, false, true);
   await expect(page.locator('#orientation-guard')).not.toBeVisible();
   expect(await page.evaluate(() => screen.orientation.type)).toBe('portrait-primary');
   expect(await page.evaluate(() => document.body.classList.contains('orientation-blocked'))).toBe(false);
   await expect(page.getByRole('textbox', { name: /NOMBRE PÚBLICO/i })).toHaveValue('Teclado');
-  await metrics(session, false);
+  await metrics(page, session, false);
   await expect(page.getByRole('button', { name: /Guardar nombre/i })).toBeVisible();
 });
 
@@ -138,7 +146,7 @@ test('desktop landscape preserves the normal presentation', async ({ browser, ba
 
 test('a simulated reward hides the guard during the ad and restores landscape blocking afterward', async ({ page, context }) => {
   const session = await context.newCDPSession(page);
-  await metrics(session, false);
+  await metrics(page, session, false);
   await start(page);
   await landFirstBox(page);
   await page.locator('.debug-panel summary').click();
