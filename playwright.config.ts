@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 
 const externalUrl = process.env.PLAYWRIGHT_BASE_URL;
 const executable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-  ?? (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
+  ?? ['/usr/bin/chromium', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(path => existsSync(path));
 
 export default defineConfig({
   testDir: './tests/e2e',

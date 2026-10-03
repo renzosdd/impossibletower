@@ -74,6 +74,7 @@ export class TowerScene extends Phaser.Scene implements GameControls {
   else if(!paused && this.state==='paused')this.state=this.pausedState;
   this.accumulator=0;this.emit();
  }
+ canSecondChance(){return (this.state==='over' || this.state==='paused' && this.pausedState==='over') && !this.assisted && !!this.falling && !this.falling.placed;}
  secondChance(){
   if(this.state!=='over' || this.assisted || !this.falling)return false;
   const failed=this.falling;Matter.Composite.remove(this.engine.world,failed.body);failed.sprite.destroy();this.pieces=this.pieces.filter(p=>p!==failed);

@@ -1,4 +1,29 @@
-<!doctype html><html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><meta name="theme-color" content="#172e38"/><meta name="description" content="Soltá lo inesperado. Apilá lo imposible. Un juego de física, un dedo y una torre que desafía la gravedad."/><title>Impossible Tower — ¿Hasta dónde llegás?</title>  <script type="module" crossorigin src="/assets/index-DvY5orfE.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-NXRyLVor.js">
-  <link rel="stylesheet" crossorigin href="/assets/index-CCKp--Q0.css">
-<link rel="manifest" href="/manifest.webmanifest"></head><body><div id="app"><main id="game-shell"><div id="game-canvas"></div><div id="ui"></div></main></div></body></html>
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+    <meta name="theme-color" content="#172e38"/>
+    <meta name="description" content="Soltá lo inesperado. Apilá lo imposible. Un juego de física, un dedo y una torre que desafía la gravedad."/>
+    <title>Impossible Tower — ¿Hasta dónde llegás?</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml"/>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+    <script type="module" crossorigin src="/assets/index-BQ1Yk7ky.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/supabase-NXRyLVor.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-DcyV2Dyi.css">
+  <link rel="manifest" href="/manifest.webmanifest"></head>
+  <body>
+    <div id="app"><main id="game-shell"><div id="game-canvas"></div><div id="ui"></div></main></div>
+    <dialog id="orientation-guard" class="orientation-guard" aria-labelledby="orientation-title" aria-describedby="orientation-description" tabindex="-1">
+      <div class="orientation-message">
+        <svg class="orientation-icon" viewBox="0 0 112 112" fill="none" aria-hidden="true">
+          <rect x="36" y="19" width="40" height="74" rx="8" stroke="currentColor" stroke-width="4"/>
+          <path d="M49 27h14M52 84h8M91 40a39 39 0 0 1-8 43m0 0h15m-15 0V68M21 72a39 39 0 0 1 8-43m0 0H14m15 0v15" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="orientation-eyebrow">IMPOSSIBLE TOWER</span>
+        <h1 id="orientation-title">Girá tu dispositivo</h1>
+        <p id="orientation-description">El juego se juega en vertical. Tu partida queda pausada y sigue cuando volvés.</p>
+      </div>
+    </dialog>
+  </body>
+</html>

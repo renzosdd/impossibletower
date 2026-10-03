@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.npm-cache/
+.netlify/
+.env*
+!.env.example
+playwright-report/
+test-results/
+.DS_Store
+supabase/.temp/
+artifacts/

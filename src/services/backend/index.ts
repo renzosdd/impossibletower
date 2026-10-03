@@ -1,11 +1,30 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Challenge, Profile, RunResult } from '../../types';
 
-export interface BackendConfig { url?: string; anonKey?: string; }
+export interface BackendConfig { url?: string; publishableKey?: string; anonKey?: string; }
 
 const REQUEST_TIMEOUT_MS = 5_000;
 const SEED_PATTERN = /^[a-zA-Z0-9:_-]{1,96}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function publicKeyIsValid(key: string): boolean {
+  if (/^sb_publishable_[A-Za-z0-9_-]+$/.test(key)) return true;
+  const parts = key.split('.');
+  if (parts.length !== 3 || parts.some(part => !/^[A-Za-z0-9_-]+$/.test(part))) return false;
+  try {
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(payload.padEnd(Math.ceil(payload.length / 4) * 4, '='))).role === 'anon';
+  } catch { return false; }
+}
+
+function backendUrl(value: string): string {
+  const url = new URL(value);
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if ((url.protocol !== 'https:' && !(local && url.protocol === 'http:'))
+    || url.username || url.password || url.search || url.hash || url.pathname !== '/')
+    throw new Error('Invalid Supabase project URL');
+  return url.origin;
+}
 
 /** Public pseudonyms only: no HTML, control characters, URLs or contact fields. */
 export function sanitizePublicName(value: unknown): string {
@@ -73,12 +92,15 @@ export class BackendService {
 
   constructor(config: BackendConfig = {
     url: import.meta.env.VITE_SUPABASE_URL,
+    publishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
     anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
   }) {
     let client: SupabaseClient | null = null;
-    if (config.url?.trim() && config.anonKey?.trim()) {
+    const key = config.publishableKey?.trim() || config.anonKey?.trim();
+    if (config.url?.trim() && key) {
       try {
-        client = createClient(config.url.trim(), config.anonKey.trim(), {
+        if (!publicKeyIsValid(key)) throw new Error('Supabase requires a publishable or legacy anon key');
+        client = createClient(backendUrl(config.url.trim()), key, {
           auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
           global: { fetch: timedFetch },
         });

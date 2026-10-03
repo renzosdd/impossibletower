@@ -9,8 +9,10 @@ vi.mock('@supabase/supabase-js', () => ({
 }));
 
 import { BackendService, isPlausibleRun, isValidChallenge, sanitizePublicName } from '../../src/services/backend';
+import { createClient } from '@supabase/supabase-js';
 
-const config = { url: 'https://example.supabase.co', anonKey: 'test-public-key' };
+const config = { url: 'https://example.supabase.co', publishableKey: 'sb_publishable_test-public-key' };
+const legacyKey = (role: string) => `eyJhbGciOiJIUzI1NiJ9.${btoa(JSON.stringify({ role })).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')}.signature`;
 const run: RunResult = {
   mode: 'casual', seed: 'tower:casual:test:v1', height: 11.6, score: 366,
   objectsPlaced: 2, perfectDrops: 2, combo: 2, maxCombo: 2, duration: 8,
@@ -23,7 +25,7 @@ beforeEach(() => {
   mocks.signInAnonymously.mockResolvedValue({ data: { user: { id: 'player-id' } }, error: null });
   mocks.rpc.mockResolvedValue({ data: [], error: null });
 });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe('backend input policy', () => {
   it('sanitizes public names and bounds Unicode pseudonyms', () => {
@@ -50,6 +52,50 @@ describe('backend input policy', () => {
 });
 
 describe('optional backend', () => {
+  it('prefers the publishable key and reads the current environment names', () => {
+    vi.stubEnv('VITE_SUPABASE_URL', ' https://example.supabase.co/ ');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', ' sb_publishable_preferred ');
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', legacyKey('anon'));
+    expect(new BackendService().enabled).toBe(true);
+    expect(createClient).toHaveBeenCalledWith('https://example.supabase.co', 'sb_publishable_preferred', expect.any(Object));
+  });
+
+  it('supports a legacy anon JWT when the preferred key is blank', () => {
+    const anonKey = legacyKey('anon');
+    expect(new BackendService({ url: config.url, publishableKey: ' ', anonKey }).enabled).toBe(true);
+    expect(createClient).toHaveBeenCalledWith(config.url, anonKey, expect.any(Object));
+  });
+
+  it('accepts publishable keys in the legacy environment field and local development URLs', () => {
+    expect(new BackendService({ url: 'http://127.0.0.1:54321', anonKey: config.publishableKey }).enabled).toBe(true);
+    expect(createClient).toHaveBeenCalledWith('http://127.0.0.1:54321', config.publishableKey, expect.any(Object));
+  });
+
+  it('rejects secret, privileged, malformed and arbitrary credentials before creating a client', async () => {
+    for (const publishableKey of [
+      'sb_secret_test', legacyKey('service_role'), legacyKey('authenticated'),
+      'eyJhbGciOiJIUzI1NiJ9.invalid.signature', 'sb_publishable_', 'database-password',
+    ]) {
+      const backend = new BackendService({ ...config, publishableKey, anonKey: legacyKey('anon') });
+      expect(backend.enabled).toBe(false);
+      expect(backend.lastError).toBe('Supabase requires a publishable or legacy anon key');
+      await backend.initialize();
+      expect(await backend.leaderboard('today')).toEqual([]);
+    }
+    expect(createClient).not.toHaveBeenCalled();
+    expect(mocks.getSession).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects insecure or malformed project URLs before creating a client', () => {
+    for (const url of [
+      'not-a-url', 'http://example.supabase.co', 'ftp://example.supabase.co',
+      'https://user:password@example.supabase.co', 'https://example.supabase.co/auth/v1',
+      'https://example.supabase.co?key=public', 'https://example.supabase.co#fragment',
+    ]) expect(new BackendService({ ...config, url }).enabled).toBe(false);
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
   it('works without credentials and makes no auth or database calls', async () => {
     const backend = new BackendService({});
     expect(backend.enabled).toBe(false);
@@ -91,6 +137,18 @@ describe('optional backend', () => {
     expect(backend.lastError).toBe('Offline');
     await expect(backend.submitRun(run)).resolves.toBeUndefined();
     expect(await backend.saveChallenge({ version: 1, seed: run.seed, height: run.height, score: run.score })).toBeNull();
+  });
+
+  it('contains anonymous authentication failures and retries on a later request', async () => {
+    mocks.getSession.mockResolvedValue({ data: { session: null }, error: null });
+    mocks.signInAnonymously.mockResolvedValueOnce({ data: { user: null }, error: { message: 'Anonymous sign-ins disabled' } });
+    const backend = new BackendService(config);
+    await expect(backend.submitRun(run)).resolves.toBeUndefined();
+    expect(backend.lastError).toBe('Anonymous sign-ins disabled');
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    await backend.submitRun(run);
+    expect(mocks.signInAnonymously).toHaveBeenCalledTimes(2);
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
   });
 
   it('bounds a hanging request rather than freezing a sharing/menu action', async () => {

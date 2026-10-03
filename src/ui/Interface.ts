@@ -65,8 +65,12 @@ export class Interface {
   private installAvailable = false;
   private rewardAvailable = false;
   private canSecondChance = false;
+  private canDoubleCoins = true;
+  private bonusRemaining = 0;
+  private trialAvailable = false;
   private paused = false;
   private dialog?: HTMLDialogElement;
+  private adDialogSuspended = false;
   private toastTimer?: number;
   private momentTimer?: number;
   private lastHeight = '';
@@ -229,10 +233,28 @@ export class Interface {
     input?.addEventListener('click', () => input.select());
   }
 
-  setRewardAvailability(available: boolean, canSecondChance: boolean): void {
+  setRewardAvailability(available: boolean, canSecondChance: boolean, canDoubleCoins = true): void {
     this.rewardAvailable = available;
     this.canSecondChance = canSecondChance;
+    this.canDoubleCoins = canDoubleCoins;
     if (this.screen === 'result') this.renderResult();
+    if (this.dialog?.open && this.dialog.dataset.kind === 'skins') this.renderSkinsBody();
+  }
+
+  setShopRewards(bonusRemaining: number, trialAvailable: boolean): void {
+    this.bonusRemaining = bonusRemaining;
+    this.trialAvailable = trialAvailable;
+    if (this.dialog?.open && this.dialog.dataset.kind === 'skins') this.renderSkinsBody();
+  }
+
+  setAdActive(active: boolean): void {
+    if (active) {
+      this.adDialogSuspended = this.dialog?.open ?? false;
+      if (this.adDialogSuspended) this.dialog?.close();
+    } else if (this.adDialogSuspended) {
+      this.adDialogSuspended = false;
+      if (this.dialog?.isConnected && !this.dialog.open) this.dialog.showModal();
+    }
   }
 
   showLeaderboard(entries: LeaderboardEntry[], kind: 'today' | 'all-time'): void {
@@ -264,7 +286,7 @@ export class Interface {
     const challengeMessage = result.mode === 'challenge' && this.config?.challenge
       ? (result.challengeWon ? 'GANASTE EL DESAFÍO' : `TE FALTARON ${meters(Math.max(0, this.config.challenge.height - result.height))} m`)
       : result.personalBest ? 'NUEVO RÉCORD PERSONAL' : result.reason === 'collapse' ? 'LA GRAVEDAD GANÓ ESTA VEZ' : 'UNA MÁS. UN POCO MÁS ALTO.';
-    this.host.innerHTML = `<section class="result-screen"><div class="result-grid"></div><header class="result-header"><span class="mini-wordmark"><span class="brand-mark">${icon('bolt')}</span> IT.</span><button class="icon-button" type="button" data-action="menu" aria-label="Volver al menú">${icon('home')}</button></header><div class="result-heading"><span class="result-eyebrow ${result.personalBest || result.challengeWon ? 'is-record' : ''}">${result.personalBest || result.challengeWon ? icon('trophy') : icon('bolt')}${escape(challengeMessage)}</span><h1>${result.height > 0 ? 'BIEN ALTO.<br><span>BIEN HECHO.</span>' : 'CASI, CASI.<br><span>OTRA MÁS.</span>'}</h1></div><div class="result-height"><span class="result-height-label">TU TORRE LLEGÓ A</span><div><strong>${meters(result.height)}</strong><span>m</span></div><span class="height-rule"><i></i><span>EL CIELO PUEDE ESPERAR</span><i></i></span></div><div class="result-stats"><div><strong>${result.objectsPlaced}</strong><span>OBJETOS</span></div><div><strong>${result.perfectDrops}</strong><span>PERFECT DROPS</span></div><div><strong>${result.score}</strong><span>SCORE</span></div></div><div class="result-record"><span>${icon('trophy')} RÉCORD PERSONAL <strong>${meters(this.profile.personalBest)} m</strong></span><span class="result-coins">${icon('coin')} +${result.coins}</span></div><div class="result-actions"><button class="primary-button" type="button" data-action="restart"><span>JUGAR DE NUEVO</span>${icon('arrow')}</button><button class="challenge-button" type="button" data-action="challenge-share">${icon('users')}<span>DESAFIAR A UN AMIGO</span>${icon('arrow')}</button><button class="share-button" type="button" data-action="share">${icon('share')} COMPARTIR RESULTADO</button></div><div class="reward-actions">${this.rewardAvailable && this.canSecondChance ? `<button class="reward-button" type="button" data-action="second-chance">${icon('bolt')} Segunda oportunidad <span>VER ANUNCIO</span></button>` : ''}${this.rewardAvailable && !this.canSecondChance && result.coins > 0 ? `<button class="reward-button" type="button" data-action="double-coins">${icon('coin')} Duplicar coins <span>VER ANUNCIO</span></button>` : ''}</div><footer class="result-footer">${result.mode === 'daily' ? `${icon('calendar')} DAILY TOWER · ${this.profile.dailyStreak} DÍA${this.profile.dailyStreak === 1 ? '' : 'S'} DE RACHA` : 'DE UNA CAJA A UN COHETE. VOLVÉ A INTENTAR.'}</footer></section>`;
+    this.host.innerHTML = `<section class="result-screen"><div class="result-grid"></div><header class="result-header"><span class="mini-wordmark"><span class="brand-mark">${icon('bolt')}</span> IT.</span><button class="icon-button" type="button" data-action="menu" aria-label="Volver al menú">${icon('home')}</button></header><div class="result-heading"><span class="result-eyebrow ${result.personalBest || result.challengeWon ? 'is-record' : ''}">${result.personalBest || result.challengeWon ? icon('trophy') : icon('bolt')}${escape(challengeMessage)}</span><h1>${result.height > 0 ? 'BIEN ALTO.<br><span>BIEN HECHO.</span>' : 'CASI, CASI.<br><span>OTRA MÁS.</span>'}</h1></div><div class="result-height"><span class="result-height-label">TU TORRE LLEGÓ A</span><div><strong>${meters(result.height)}</strong><span>m</span></div><span class="height-rule"><i></i><span>EL CIELO PUEDE ESPERAR</span><i></i></span></div><div class="result-stats"><div><strong>${result.objectsPlaced}</strong><span>OBJETOS</span></div><div><strong>${result.perfectDrops}</strong><span>PERFECT DROPS</span></div><div><strong>${result.score}</strong><span>SCORE</span></div></div><div class="result-record"><span>${icon('trophy')} RÉCORD PERSONAL <strong>${meters(this.profile.personalBest)} m</strong></span><span class="result-coins">${icon('coin')} +${result.coins}</span></div><div class="result-actions"><button class="primary-button" type="button" data-action="restart"><span>JUGAR DE NUEVO</span>${icon('arrow')}</button><button class="challenge-button" type="button" data-action="challenge-share">${icon('users')}<span>DESAFIAR A UN AMIGO</span>${icon('arrow')}</button><button class="share-button" type="button" data-action="share">${icon('share')} COMPARTIR RESULTADO</button></div><div class="reward-actions">${this.rewardAvailable && this.canSecondChance ? `<button class="reward-button" type="button" data-action="second-chance">${icon('bolt')} Segunda oportunidad <span>VER ANUNCIO</span></button>` : ''}${this.rewardAvailable && this.canDoubleCoins && result.coins > 0 ? `<button class="reward-button" type="button" data-action="double-coins">${icon('coin')} Duplicar coins <span>VER ANUNCIO</span></button>` : ''}</div><footer class="result-footer">${result.mode === 'daily' ? `${icon('calendar')} DAILY TOWER · ${this.profile.dailyStreak} DÍA${this.profile.dailyStreak === 1 ? '' : 'S'} DE RACHA` : 'DE UNA CAJA A UN COHETE. VOLVÉ A INTENTAR.'}</footer></section>`;
   }
 
   private handleClick(event: MouseEvent): void {
@@ -297,7 +319,7 @@ export class Interface {
     if (action === 'privacy' || action === 'terms') { this.openLegal(action); return; }
     if (action === 'ranking-today' || action === 'ranking-all-time') { this.onAction({ type: 'leaderboard', kind: action === 'ranking-today' ? 'today' : 'all-time' }); return; }
     if (action === 'cosmetic') { this.onAction({ type: 'cosmetic', id: button.dataset.id! }); return; }
-    if (action === 'second-chance' || action === 'double-coins' || action === 'cosmetic-trial') {
+    if (action === 'second-chance' || action === 'double-coins' || action === 'cosmetic-trial' || action === 'coin-bonus') {
       this.onAction({ type: 'reward', reward: action }); return;
     }
     if (action === 'toggle') {
@@ -371,6 +393,7 @@ export class Interface {
   }
 
   private openSkins(): void {
+    this.onAction({ type: 'reward-options' });
     this.openDialog('skins', 'Un poco de estilo.', '');
     this.renderSkinsBody();
   }
@@ -384,7 +407,7 @@ export class Interface {
       const selected = this.profile.selectedCosmetics[category] === cosmetic.id;
       return `<button type="button" class="cosmetic-card ${selected ? 'selected' : ''} ${owned ? 'owned' : ''}" data-action="cosmetic" data-id="${escape(cosmetic.id)}" aria-pressed="${selected}" ${!owned && this.profile.coins < cosmetic.price ? 'disabled' : ''}><span class="cosmetic-preview cosmetic-${category}" style="--cosmetic-color:${escape(cosmetic.color)}">${category === 'crane' ? '<svg viewBox="0 0 80 48" aria-hidden="true"><path d="M13 35V8h40m-33 0v27M13 15h40m-31 0 10-7 10 7m-10 0 10-7 10 7M49 9v20m-5 0h10m-5 0v5"/><path d="M7 37h19"/></svg>' : category === 'background' ? '<i class="preview-sun"></i><i class="preview-hill"></i>' : category === 'trail' ? '<i class="preview-trail"></i><i class="preview-trail second"></i><i class="preview-trail third"></i>' : '<span class="preview-spark">✦</span>'}${selected ? `<i class="selected-check">${icon('check')}</i>` : ''}</span><strong>${escape(cosmetic.name)}</strong><small>${selected ? 'EQUIPADO' : owned ? 'EQUIPAR' : `${icon('coin')} ${cosmetic.price}`}</small></button>`;
     }).join('')}</div></section>`).join('');
-    body.innerHTML = `<div class="shop-heading"><p>Solo cambia el look.<br>La gravedad sigue igual.</p><span class="shop-coins">${icon('coin')} ${this.profile.coins}</span></div>${categories}${this.rewardAvailable ? `<button type="button" class="reward-button" data-action="cosmetic-trial">${icon('skin')} Probar un efecto <span>VER ANUNCIO</span></button>` : ''}`;
+    body.innerHTML = `<div class="shop-heading"><p>Solo cambia el look.<br>La gravedad sigue igual.</p><span class="shop-coins">${icon('coin')} ${this.profile.coins}</span></div>${categories}${this.rewardAvailable ? `<section class="shop-rewards" aria-label="Recompensas opcionales"><h3>UN EXTRA OPCIONAL</h3><p>Elegí una recompensa y mirá un anuncio.</p><button type="button" class="reward-button" data-action="coin-bonus" ${this.bonusRemaining === 0 ? 'disabled' : ''}>${icon('coin')} +25 coins <span>${this.bonusRemaining > 0 ? `VER ANUNCIO · ${this.bonusRemaining}/3 HOY` : 'LÍMITE DE HOY ALCANZADO'}</span></button>${this.trialAvailable ? `<button type="button" class="reward-button" data-action="cosmetic-trial">${icon('skin')} Probar Confeti <span>PRÓXIMA TORRE · VER ANUNCIO</span></button>` : ''}</section>` : ''}`;
   }
 
   private openAchievements(): void {

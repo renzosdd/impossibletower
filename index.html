@@ -6,10 +6,9 @@
     <meta name="theme-color" content="#172e38"/>
     <meta name="description" content="Soltá lo inesperado. Apilá lo imposible. Un juego de física, un dedo y una torre que desafía la gravedad."/>
     <title>Impossible Tower — ¿Hasta dónde llegás?</title>
-    <script type="module" crossorigin src="/assets/index-LeiNwRMs.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/supabase-NXRyLVor.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-Ddh2Mt4y.css">
-  <link rel="manifest" href="/manifest.webmanifest"></head>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml"/>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+  </head>
   <body>
     <div id="app"><main id="game-shell"><div id="game-canvas"></div><div id="ui"></div></main></div>
     <dialog id="orientation-guard" class="orientation-guard" aria-labelledby="orientation-title" aria-describedby="orientation-description" tabindex="-1">
@@ -23,5 +22,6 @@
         <p id="orientation-description">El juego se juega en vertical. Tu partida queda pausada y sigue cuando volvés.</p>
       </div>
     </dialog>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

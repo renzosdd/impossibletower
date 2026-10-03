@@ -312,9 +312,19 @@ export class PokiAdProvider implements AdProvider {
 
 export function createAdProvider(): AdProvider {
   if (!browserAvailable()) return new MockAdProvider();
-  switch (String(import.meta.env.VITE_PLATFORM ?? '').toLowerCase()) {
+  switch (String(import.meta.env.VITE_PLATFORM ?? 'standalone').toLowerCase()) {
     case 'crazygames': return new CrazyGamesAdProvider();
     case 'poki': return new PokiAdProvider();
+    case 'standalone': {
+      const client = String(import.meta.env.VITE_GOOGLE_ADSENSE_CLIENT ?? '').trim();
+      if (String(import.meta.env.VITE_AD_PROVIDER ?? '').toLowerCase() === 'google-h5' && isGooglePublisher(client)) {
+        return new GoogleH5AdProvider({ client, channel: String(import.meta.env.VITE_GOOGLE_ADSENSE_CHANNEL ?? '').trim() });
+      }
+      return new MockAdProvider();
+    }
     default: return new MockAdProvider();
   }
 }
+import { GoogleH5AdProvider, isGooglePublisher } from './googleH5';
+
+export { GoogleH5AdProvider } from './googleH5';

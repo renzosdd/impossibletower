@@ -13,13 +13,13 @@ src/
   main.ts                 Integración del juego, interfaz y servicios
   types/                  Contratos compartidos
   game/                   Escena, física e ilustraciones procedurales
-  ui/                     Overlays responsive y estilos
+  ui/                     Overlays responsive, orientación y estilos
   content/                Objetos, skins, logros y misiones
   utils/                  RNG, scoring y estabilidad puros
   services/
     storage/              Perfil versionado y progreso local
     sharing/              Challenge URL y tarjeta Canvas
-    ads/                  Mock, CrazyGames y Poki
+    ads/                  Google H5 opcional, ledger y proveedor local
     analytics/            Interfaz y console transport
     backend/              Supabase opcional con fallbacks
 public/                   Iconos y fuentes locales con licencia
@@ -78,29 +78,41 @@ Crear `.env.local` desde `.env.example`. Vite incluye estas variables en el fron
 
 | Variable | Propósito |
 | --- | --- |
-| `VITE_PLATFORM` | `standalone` (default), `crazygames` o `poki` |
+| `VITE_PLATFORM` | `standalone` para la distribución en Netlify |
+| `VITE_AD_PROVIDER` | `none` (actual) o `google-h5` después de la aprobación |
+| `VITE_GOOGLE_ADSENSE_CLIENT` | Publisher aprobado: `ca-pub-` y 16 dígitos |
+| `VITE_GOOGLE_ADSENSE_CHANNEL` | Canal Google H5 opcional |
 | `VITE_SUPABASE_URL` | URL pública del proyecto, opcional |
-| `VITE_SUPABASE_ANON_KEY` | Clave pública anon, opcional |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Clave pública preferida, opcional |
+| `VITE_SUPABASE_ANON_KEY` | Clave pública legacy; fallback si publishable está vacía |
 | `VITE_ANALYTICS_DEBUG` | Reservada; el console transport se activa en desarrollo |
 
-Reiniciar Vite o reconstruir al cambiar variables. Nunca usar `service_role` en el frontend.
+Reiniciar Vite o reconstruir al cambiar variables. El cliente rechaza claves secretas y JWT privilegiados, pero cualquier `VITE_*` puede quedar en el frontend al compilar. Nunca introducir `service_role` ni claves administrativas.
 
-## Standalone y publicidad
+## Orientación móvil
 
-`AdProvider` define `initialize`, `commercialBreak`, `rewardedAd` e `isRewardedAvailable`. Standalone usa `MockAdProvider`: no carga SDKs, no muestra publicidad y no afirma que se vio un anuncio. Sólo en debug se puede simular éxito o fallo.
+`src/ui/orientation.ts` intenta `screen.orientation.lock('portrait')` con un gesto, sin fullscreen. En móviles que no admiten bloqueo, landscape muestra “Girá tu dispositivo”, oculta la interfaz y pausa física, input y audio. Volver a portrait conserva torre, seed y pausa manual. La orientación física evita confundir un teclado virtual con una rotación. Desktop conserva su presentación.
 
-Los rewarded son opcionales: segunda oportunidad elegible, duplicar coins o probar un cosmético. No duplican score ni ranking. Los cortes comerciales son oportunidades en pausas naturales. Durante un anuncio se detienen física, input y audio y se restauran aun si falla. No se interrumpe una caída.
+Durante un anuncio se oculta el aviso de orientación, se cierran temporalmente los diálogos del juego y se mantiene bloqueado el input. Al terminar se restauran los diálogos y la pausa que corresponda.
 
-## CrazyGames y Poki
+## Publicidad opcional y recompensas
 
-```bash
-VITE_PLATFORM=crazygames npm run build
-VITE_PLATFORM=poki npm run build
-```
+La configuración actual es `VITE_PLATFORM=standalone` y `VITE_AD_PROVIDER=none`: no carga SDKs ni muestra anuncios. La simulación publicitaria requiere `?debug=1` y elegir `Ad success` o `Ad error`.
 
-CrazyGames carga sólo `https://sdk.crazygames.com/crazygames-sdk-v3.js` y usa `requestAd('midgame' | 'rewarded')` con callbacks. Poki carga sólo `https://game-cdn.poki.com/scripts/v2/poki-sdk.js` y usa `commercialBreak`/`rewardedBreak`. Nunca se cargan ambos SDKs. El proveedor decide inventario y elegibilidad; error, rechazo o timeout devuelve el control al juego.
+Google H5 está preparado en `src/services/ads/googleH5.ts`. Activarlo únicamente después de obtener aprobación, publisher válido y resolver los requisitos de consentimiento aplicables. Cambiar variables requiere reconstruir. Configuración ausente o inválida conserva el proveedor local sin publicidad. Los adapters anteriores de portales se conservan por compatibilidad; la distribución prevista es exclusivamente Netlify.
 
-Antes de lanzar en un portal hay que verificar su entorno de review, los requisitos vigentes del SDK y la elegibilidad de segunda oportunidad. Esta entrega no certifica aprobación de portal ni inventario publicitario real.
+El proveedor espera `onReady`. Una recompensa requiere oferta, inicio, confirmación de visualización, finalización y estado final `viewed`. Cancelación, error, falta de inventario, timeout, callbacks tardíos o solicitudes simultáneas no conceden premios. Las solicitudes se originan solo al elegir una recompensa; volver al menú no pide anuncios. Durante la solicitud se pausan física, input y audio.
+
+| Recompensa | Condiciones y efecto |
+| --- | --- |
+| Segunda oportunidad | Una por partida recuperable: fallo de pieza, ≥3 objetos y resultado pendiente. Restaura la torre y revierte el resultado provisional para contabilizar una sola partida. Partidas asistidas excluidas del ranking. |
+| Duplicar coins | Una por resultado con coins. Elegirla finaliza el resultado y cierra la continuación, incluso si el anuncio falla. No modifica altura ni score. También disponible al terminar una partida asistida. |
+| Bono de 25 coins | En Skins; máximo tres visualizaciones completadas por día UTC y navegador/dispositivo. |
+| Prueba de Confeti | En Skins si no está comprado ni hay una prueba pendiente. Próxima torre, incluida su segunda oportunidad; no desbloquea el cosmético. |
+
+El ledger `impossible-tower.rewards.v1` se guarda separado del perfil. El bono persiste entre recargas cuando localStorage está disponible; la prueba pendiente persiste también al cambiar de día. La prueba modifica únicamente la apariencia de la escena y conserva el efecto elegido en el perfil. Storage bloqueado usa memoria durante la sesión. Estos límites son locales, sin economía autoritativa.
+
+Contrato contrastado con documentación de Google: [adBreak](https://developers.google.com/ad-placement/apis/adbreak), [adConfig](https://developers.google.com/ad-placement/apis/adconfig) y [configuración H5](https://support.google.com/adsense/answer/9955214). Los tests simulan callbacks; no verifican inventario ni anuncios reales.
 
 ## Supabase setup
 
@@ -108,7 +120,7 @@ Con las dos variables vacías el juego local funciona completo. Para habilitar b
 
 1. Crear un proyecto Supabase y activar Anonymous Sign-ins en Authentication.
 2. Aplicar los SQL de `supabase/migrations/` en orden con CLI o SQL Editor.
-3. Configurar URL y clave anon pública y reconstruir.
+3. Configurar URL y clave publishable pública (o anon legacy) y reconstruir.
 4. Verificar RPCs, RLS y rankings con dos sesiones anónimas diferentes.
 
 El esquema tiene profiles, scores, daily_scores y challenges. Las escrituras pasan por RPCs con RLS, pertenencia del usuario y límites plausibles de modo, seed, altura, puntos, objetos, precisión y duración. El Daily se verifica con fecha del servidor. Las lecturas de ranking muestran datos reales; sin backend se oculta el ranking y un backend vacío no genera jugadores ficticios.
@@ -182,9 +194,9 @@ npm run test:e2e
 npm run build
 ```
 
-Publicar `dist/` en un hosting estático con HTTPS. Netlify/Vercel/Cloudflare Pages: build `npm run build`, salida `dist`. No necesita servidor Node en producción. La configuración asume raíz de dominio; para subdirectorios ajustar `base`, `start_url` y scope, y verificar los enlaces y service worker. No publicar `.env.local`.
+Publicar exclusivamente `dist/` en el mismo sitio de Netlify, con HTTPS. `netlify.toml` configura build `npm run build`, salida `dist` y Node 22. HTML, manifest, service worker y archivos no versionados revalidan caché; `/assets/*` usa un año e `immutable`. `public/_headers` conserva esas reglas también en una subida manual. No necesita servidor Node en producción. La configuración asume raíz de dominio; para subdirectorios ajustar `base`, `start_url` y scope, y verificar los enlaces y service worker. No publicar `.env.local`.
 
-El proyecto y los builds locales no implican publicación de un sitio o entrega a un portal.
+El proyecto y los builds locales no implican commit, push ni publicación. `index.html` apunta al código fuente de Vite; los exports compilados históricos en la raíz se conservan, pero la entrega actual se genera en `dist/`. Consultar `VALIDATION.md` para el estado real de cada revisión.
 
 ## Testing y debug
 
@@ -200,9 +212,9 @@ El reporte final de entrega indica qué comandos se ejecutaron y sus resultados.
 - Las colisiones usan formas convexas simplificadas; no toda la geometría de la ilustración.
 - El seed reproduce secuencia; la física completa puede variar entre dispositivos.
 - Sin backend hay progreso local y no hay ranking global ni percentil real.
-- Supabase y portales requieren credenciales públicas/configuración y verificación externa.
+- Supabase alojado requiere proyecto identificado, credenciales públicas, Anonymous Sign-ins, migración y verificación con sesiones diferentes. Google H5 permanece apagado hasta aprobación y consentimiento.
 - Los diálogos Privacy y Terms son placeholders y **deben completarse y revisarse legalmente antes del lanzamiento comercial**, reflejando proveedores y jurisdicciones reales.
-- Los adapters de ads son una base de integración, no una certificación del portal.
+- El adapter de anuncios es una integración preparada, sin verificación de inventario real.
 
 ## Próximos cinco experimentos de producto
 
