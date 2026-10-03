@@ -1,2 +1,213 @@
-# impossibletower
-impossibletower
+# Impossible Tower
+
+Un juego arcade de física para jugar con un dedo: soltá objetos desde una grúa y construí la torre más alta posible. La altura es la métrica principal; precisión y combos suman puntos. Los retos compartidos reproducen la misma secuencia de objetos.
+
+La V1 usa ilustraciones procedurales originales y funciona sin cuenta. Las coins sirven exclusivamente para cosméticos: no hay pagos, apuestas, premios en dinero ni conversión a dinero real.
+
+## Stack y arquitectura
+
+TypeScript, Vite, Phaser 3, Matter.js, overlays HTML/CSS, Canvas para la tarjeta compartible, Web Audio, Vite PWA, Vitest y Playwright. No usa React. La simulación tiene un mundo lógico fijo de 420 × 746 y paso a 60 Hz: cambiar de dispositivo no cambia las dimensiones físicas. Supabase es opcional.
+
+```text
+src/
+  main.ts                 Integración del juego, interfaz y servicios
+  types/                  Contratos compartidos
+  game/                   Escena, física e ilustraciones procedurales
+  ui/                     Overlays responsive y estilos
+  content/                Objetos, skins, logros y misiones
+  utils/                  RNG, scoring y estabilidad puros
+  services/
+    storage/              Perfil versionado y progreso local
+    sharing/              Challenge URL y tarjeta Canvas
+    ads/                  Mock, CrazyGames y Poki
+    analytics/            Interfaz y console transport
+    backend/              Supabase opcional con fallbacks
+public/                   Iconos y fuentes locales con licencia
+tests/unit/               Lógica, migraciones y adapters
+tests/e2e/                Flujos críticos del navegador
+supabase/migrations/       Esquema SQL, RPCs, validación y RLS
+```
+
+## Instalación y desarrollo
+
+Usar Node.js 22.12 o posterior y npm (Vite 7 también admite Node 20.19+).
+
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Abrí la dirección que imprime Vite, normalmente `http://localhost:5173`. El servidor usa `--host 0.0.0.0` para probar desde un teléfono de la misma red. No hacen falta credenciales para jugar.
+
+La configuración `.npmrc` guarda la caché de npm en `.npm-cache/` para permitir la instalación en entornos con el directorio personal protegido. Esa carpeta queda fuera de Git y del build.
+
+| Comando | Uso |
+| --- | --- |
+| `npm run dev` | Servidor de desarrollo |
+| `npm run check` | Comprobación TypeScript |
+| `npm test` | Tests unitarios |
+| `npm run test:watch` | Vitest interactivo |
+| `npm run test:e2e` | Flujos Playwright |
+| `npm run build` | TypeScript y build de producción en `dist/` |
+| `npm run preview` | Servir el build de producción |
+
+Para E2E en una máquina propia: `npx playwright install chromium`. También se admite `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` para Chromium del sistema y `PLAYWRIGHT_BASE_URL` para un servidor existente.
+
+## Gameplay y contenido
+
+Tocá, clickeá el área de juego o pulsá espacio para soltar. La grúa se mueve sola. Después de caer, una pieza debe estar apoyada y casi inmóvil unos 950 ms. La partida termina al atravesar la kill zone o colapsar una parte significativa de la cima. El siguiente objeto aparece automáticamente.
+
+La secuencia empieza con dos cajas y una mesa. Después aparecen muebles, electrodomésticos, vehículos, casa, barco, pelota y raros como cohete y satélite: 18 objetos con atributos físicos diferentes. La dificultad depende del índice del drop; así dos jugadores conservan los mismos objetos aunque sus alturas sean distintas.
+
+El score es `altura × 10 + objetos × 25 + puntos de precisión`. PERFECT y GREAT mantienen combo; GOOD y RISKY lo reinician. El multiplicador sólo afecta puntos. La altura se calcula en coordenadas del mundo, no de la cámara.
+
+La V1 incluye Casual, Daily Tower y challenge por enlace; cámara ascendente y fases de cielo; partículas limitadas, combos, feedback, audio y vibración cuando el navegador la permite; récord, coins, 5 skins de grúa, 3 backgrounds, 5 trails, 5 efectos, 10 logros y 8 misiones. Se muestran tres misiones pendientes que rotan cada cinco partidas.
+
+## Seeds, Daily y sharing
+
+`createRng(seed)` usa hashing y Mulberry32. `objectAt(seed, index)` calcula cada elección independientemente: consultar objetos en otro orden no altera la secuencia. El seed diario es `tower:daily:YYYY-MM-DD:v1`, usando fecha **UTC**. Se permiten múltiples intentos, se guarda la mejor altura y se mantiene racha diaria.
+
+Los enlaces auto contenidos llevan `{ version, seed, height, score, name? }` en base64url dentro de `?challenge=`. Funcionan sin backend ni acortador. El decoder valida tamaños, métricas y nombres. El objetivo compartido es un reto entre amigos, no un resultado de ranking verificado.
+
+Web Share API intenta compartir enlace y, cuando se admite, un PNG Canvas vertical de 1080 × 1920. Si no hay Web Share, se copia el link; si el portapapeles falla, se ofrece copia manual. La tarjeta sólo incluye métricas reales: no se inventan percentiles ni jugadores.
+
+## Environment variables
+
+Crear `.env.local` desde `.env.example`. Vite incluye estas variables en el frontend: nunca poner secretos administrativos.
+
+| Variable | Propósito |
+| --- | --- |
+| `VITE_PLATFORM` | `standalone` (default), `crazygames` o `poki` |
+| `VITE_SUPABASE_URL` | URL pública del proyecto, opcional |
+| `VITE_SUPABASE_ANON_KEY` | Clave pública anon, opcional |
+| `VITE_ANALYTICS_DEBUG` | Reservada; el console transport se activa en desarrollo |
+
+Reiniciar Vite o reconstruir al cambiar variables. Nunca usar `service_role` en el frontend.
+
+## Standalone y publicidad
+
+`AdProvider` define `initialize`, `commercialBreak`, `rewardedAd` e `isRewardedAvailable`. Standalone usa `MockAdProvider`: no carga SDKs, no muestra publicidad y no afirma que se vio un anuncio. Sólo en debug se puede simular éxito o fallo.
+
+Los rewarded son opcionales: segunda oportunidad elegible, duplicar coins o probar un cosmético. No duplican score ni ranking. Los cortes comerciales son oportunidades en pausas naturales. Durante un anuncio se detienen física, input y audio y se restauran aun si falla. No se interrumpe una caída.
+
+## CrazyGames y Poki
+
+```bash
+VITE_PLATFORM=crazygames npm run build
+VITE_PLATFORM=poki npm run build
+```
+
+CrazyGames carga sólo `https://sdk.crazygames.com/crazygames-sdk-v3.js` y usa `requestAd('midgame' | 'rewarded')` con callbacks. Poki carga sólo `https://game-cdn.poki.com/scripts/v2/poki-sdk.js` y usa `commercialBreak`/`rewardedBreak`. Nunca se cargan ambos SDKs. El proveedor decide inventario y elegibilidad; error, rechazo o timeout devuelve el control al juego.
+
+Antes de lanzar en un portal hay que verificar su entorno de review, los requisitos vigentes del SDK y la elegibilidad de segunda oportunidad. Esta entrega no certifica aprobación de portal ni inventario publicitario real.
+
+## Supabase setup
+
+Con las dos variables vacías el juego local funciona completo. Para habilitar backend:
+
+1. Crear un proyecto Supabase y activar Anonymous Sign-ins en Authentication.
+2. Aplicar los SQL de `supabase/migrations/` en orden con CLI o SQL Editor.
+3. Configurar URL y clave anon pública y reconstruir.
+4. Verificar RPCs, RLS y rankings con dos sesiones anónimas diferentes.
+
+El esquema tiene profiles, scores, daily_scores y challenges. Las escrituras pasan por RPCs con RLS, pertenencia del usuario y límites plausibles de modo, seed, altura, puntos, objetos, precisión y duración. El Daily se verifica con fecha del servidor. Las lecturas de ranking muestran datos reales; sin backend se oculta el ranking y un backend vacío no genera jugadores ficticios.
+
+El adapter limita la espera y aborta fetch. Los fallos no impiden jugar ni compartir enlaces auto contenidos. El perfil remoto es respaldo básico; no implementa una economía autoritativa ni merge multidispositivo.
+
+Un resultado normal se envía al terminar. Si existe una oferta de segunda oportunidad elegible, su envío remoto se difiere hasta elegir continuar o finalizar mediante menú, reinicio o compartir. Si se continúa, se restaura el progreso previo y se registra una sola partida final; las coins no se duplican. Las partidas asistidas se excluyen de los rankings competitivos.
+
+Estas validaciones **no son anti-cheat completo**: el cliente controla la simulación. Una siguiente versión debe registrar cada drop con timestamp, reproducir/validar partidas server-side y añadir límites de abuso por identidad/IP. No usar las tablas para premios financieros.
+
+## Analytics architecture
+
+`AnalyticsProvider.track(event, properties)` separa eventos del transporte. `ConsoleAnalyticsProvider` escribe sólo en desarrollo, filtra campos sensibles y no envía solicitudes a un tercero. Un proveedor real puede añadirse sin modificar física.
+
+Se contemplan sesión, tutorial, partida, drops, aterrizajes, precisión, combos, récords, Daily, desafíos, share, rewarded, cortes, cosméticos, misiones e instalación. Las propiedades incluyen modo, seed, altura, score, objetos, duración, sesión/run y dispositivo; no hacen falta email, teléfono, documentos ni datos financieros.
+
+## Storage y migraciones
+
+El perfil vive bajo `impossible-tower.profile` con schema `version: 2`. Guarda récord, coins, cosméticos, preferencias, logros, misiones, Daily, racha y sesiones. `migrateProfile` recupera campos conocidos y descarta contenido inválido. JSON corrupto, cuota agotada o storage bloqueado no impide jugar; queda progreso en memoria para esa sesión.
+
+El progreso local puede editarse desde herramientas del navegador. Los cosméticos afectan presentación y no la física ni el ranking.
+
+## Agregar objetos y modificar dificultad
+
+1. Añadir ID único y atributos físicos en `src/content/objects.ts`.
+2. Elegir `rectangle`, `circle` o `trapezoid` y opcional `centerOfMassOffset`.
+3. Dibujar el objeto propio en `src/game/objects/textures.ts`, alineado con el cuerpo físico.
+4. Ajustar selección/rareza en `objectAt` y probar desde debug.
+
+`objectAt` define etapas y rareza; `craneSpeed` define velocidad y máximo. Al cambiar una secuencia publicada, incrementar la versión del generador/seed para no alterar retos existentes silenciosamente. El seed garantiza orden de objetos; la simulación completa no garantiza igualdad bit a bit entre navegadores.
+
+`src/utils/stability.ts` contiene thresholds, tiempo de asentamiento y colapso. Exige pérdida significativa de altura y desplazamiento de varias piezas recientes. Una pieza vieja que se mueve un poco no termina el run. Ajustar estos valores con playtesting.
+
+## Agregar skins, misiones y logros
+
+Los catálogos están en `src/content/cosmetics.ts`, `missions.ts` y `achievements.ts`; el progreso se evalúa en `src/services/storage/progress.ts`. Mantener IDs persistidos estables y un cosmético gratis por categoría. Efectos con geometría nueva requieren ampliar el renderer. Cambios de recompensas o targets posteriores al release necesitan migración.
+
+## Audio
+
+Web Audio sintetiza sonidos limpios y livianos y se desbloquea con un gesto. La música empieza apagada; música, SFX y haptics se guardan individualmente. No hay archivos de audio licenciados. Para reemplazarlos, conservar la API del audio manager y usar assets propios: drop, impactos, perfect, combo, collapse, game over, récord y botón.
+
+Audio o vibración no disponible tiene fallback silencioso. Safari iOS normalmente no permite vibración. La interfaz respeta safe areas y permite espacio en desktop.
+
+## PWA y verificación offline
+
+Vite PWA genera manifest/service worker y precachea el shell con iconos propios de 192/512 px. Para verificar la versión de producción:
+
+```bash
+npm run build
+npm run preview
+```
+
+Abrir una vez online en HTTPS o localhost, esperar activación del service worker y recargar offline. Deben funcionar menú, Casual, Daily y desafíos auto contenidos. Rankings y SDKs requieren red. La instalación depende del navegador y se sugiere después de engagement cuando existe prompt. En iPhone usar Compartir → Agregar a inicio.
+
+Con preview activo, el test automatizado de producción verifica manifest, control del service worker, recarga offline y un aterrizaje físico real:
+
+```bash
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 PLAYWRIGHT_PWA=1 npm run test:e2e -- tests/e2e/pwa.spec.ts
+```
+
+Este test se omite en el servidor de desarrollo, donde no se instala el service worker de producción.
+
+Probar también la actualización de una instalación antigua. Limpiar caches sirve para diagnóstico, no como mecanismo de actualización del producto.
+
+## Build y deploy
+
+```bash
+npm run check
+npm test
+npm run test:e2e
+npm run build
+```
+
+Publicar `dist/` en un hosting estático con HTTPS. Netlify/Vercel/Cloudflare Pages: build `npm run build`, salida `dist`. No necesita servidor Node en producción. La configuración asume raíz de dominio; para subdirectorios ajustar `base`, `start_url` y scope, y verificar los enlaces y service worker. No publicar `.env.local`.
+
+El proyecto y los builds locales no implican publicación de un sitio o entrega a un portal.
+
+## Testing y debug
+
+Unitarios: RNG, secuencia/dificultad, altura, score, precisión/combo, estabilidad, migraciones, challenge, misiones/logros, ads y validación de backend. E2E: menú, partida/drop, game over físico, reinicio, Daily, challenge y preferencias persistidas. Un game over forzado en debug también permite verificar rápidamente el resultado.
+
+`/?debug=1` habilita seed, objeto, FPS/cuerpos/centro de masa, reset de storage, coins, altura y simulación de ads. `window.__tower` permite automatización sólo en este modo; `debug('center')` fija la grúa sobre el apoyo y `debug('miss')` prepara una caída fuera de plataforma. No se graba pantalla automáticamente.
+
+El reporte final de entrega indica qué comandos se ejecutaron y sus resultados. Chromium E2E no sustituye pruebas físicas en Safari iOS/Android ni pruebas reales de los SDKs externos.
+
+## Limitaciones y preparación del lanzamiento
+
+- Sensación de física, duración objetivo de 1–4 minutos y 60 FPS requieren playtesting y medición en teléfonos reales.
+- Las colisiones usan formas convexas simplificadas; no toda la geometría de la ilustración.
+- El seed reproduce secuencia; la física completa puede variar entre dispositivos.
+- Sin backend hay progreso local y no hay ranking global ni percentil real.
+- Supabase y portales requieren credenciales públicas/configuración y verificación externa.
+- Los diálogos Privacy y Terms son placeholders y **deben completarse y revisarse legalmente antes del lanzamiento comercial**, reflejando proveedores y jurisdicciones reales.
+- Los adapters de ads son una base de integración, no una certificación del portal.
+
+## Próximos cinco experimentos de producto
+
+1. Comparar velocidades de grúa en los diez primeros drops y medir segundo intento y altura mediana.
+2. Ajustar asentamiento entre 0,8 y 1,1 segundos y observar ritmo y sensación de control.
+3. Comparar dos tarjetas con métricas reales y medir aperturas/aceptación de challenge.
+4. Comparar Daily estable versus selección más absurda y medir retorno al día siguiente.
+5. Medir segunda oportunidad elegible y su impacto en diversión y reinicio antes de integrar anuncios reales.
