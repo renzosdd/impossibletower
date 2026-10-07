@@ -82,7 +82,8 @@ export class AccountInterface {
   private flags: AccountEnabledFlags = { economy: false, rankings: false, rankingPeriods: ['daily','monthly'], payments: false, paymentMode: 'disabled', onlineAllowed: false };
   private readonly dialog = document.createElement('dialog');
   private view: View | null = null;
-  private privacyDestination: 'account' | 'shop' = 'account';
+  private privacyDestination: 'account' | 'shop' | 'google' = 'account';
+  private privacyGoogleRecover = false;
   private selected: AidId[] = [];
   private ranking: RankingSnapshot | null = null;
   private period: RankingPeriod = 'daily';
@@ -173,7 +174,7 @@ export class AccountInterface {
     this.open(privacyConsent.canUseOnlineServices() ? 'shop' : 'privacy');
   }
 
-  showPrivacySetup(): void { this.open('privacy'); }
+  showPrivacySetup(google?: {recover?:boolean}): void { this.privacyDestination=google?'google':'account';this.privacyGoogleRecover=!!google?.recover;this.open('privacy'); }
 
   showLeaderboard(data: RankingSnapshot | null, period: RankingPeriod = data?.period ?? this.period, error = ''): void {
     this.ranking = data;
@@ -300,7 +301,7 @@ export class AccountInterface {
     if (action === 'account') { this.showAccount(); return; }
     if (action === 'shop') { this.showShop(); return; }
     if (action === 'privacy') { this.showPrivacySetup(); return; }
-    if (action === 'privacy-continue') { if (privacyConsent.canUseOnlineServices()) this.open(this.privacyDestination); return; }
+    if (action === 'privacy-continue') { if (privacyConsent.canUseOnlineServices()){if(this.privacyDestination==='google'){this.closeDialog();this.options.onAction({type:'google',recover:this.privacyGoogleRecover});}else this.open(this.privacyDestination);}return; }
     if (action === 'run-aids') { this.open('run'); return; }
     if (action === 'ranking') {
       const period = button.dataset.period as RankingPeriod;

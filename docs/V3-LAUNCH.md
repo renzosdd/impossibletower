@@ -13,6 +13,7 @@ Esta entrega se valida localmente antes de habilitar competencia. No activar anu
 - Bienvenida 60 una vez; misiones 2 cada una (máximo 6); referido 5 (máximo 10 pagos/día); Daily requiere 20 participantes y emite como máximo 125. Ninguna partida, récord, insignia, anuncio ni share entrega monedas por sí mismo.
 - Atribución de referido: primer enlace válido, siete días, Google creado después de la atribución, primer Daily aceptado con 5 objetos. Se excluyen cuentas anteriores y autorreferidos. Después del décimo pago, el referido se descarta; no queda pendiente.
 - PayPal deshabilitado por una constante de release, además de los flags. No se crean órdenes ni se procesan callbacks de pago. El código del proveedor queda para otra entrega.
+- Inicio simplificado: Daily con tres corazones y Juego libre sin descripciones adicionales. Ranking está en la navegación inferior; las invitaciones tienen un botón separado. No se muestra contador de renovación, umbral de premios ni requisito Google en las tarjetas. Daily abre solo Google; práctica ofrece Google/invitado. Al agotar vidas, el botón Daily abre recarga por 30 monedas o anuncio disponible; una recarga confirmada inicia el intento. La renovación sigue siendo diaria en UTC, sin recarga gradual.
 - ES por defecto; ES/EN persistente, disponible en menú, partida, resultado y diálogos. Las páginas públicas tienen versiones estáticas `/en/...`, sin scripts publicitarios.
 
 ## Pruebas locales reproducibles
@@ -45,6 +46,7 @@ Estos tests interceptan Auth y API; no demuestran acceso Google real ni disponib
 - Compilación de producción y comprobación TypeScript aprobadas.
 - Pruebas de navegador aprobadas en escritorio y móvil: navegación, ES/EN, nombre obligatorio, reinicio, segunda chance con replay canónico, cuenta simulada, rankings, páginas legales y desafíos V2.
 - PWA: práctica sin conexión y actualización desde el cliente anterior aprobadas en ambos dispositivos; la migración elimina las monedas locales y conserva el progreso.
+- Ajuste del inicio: 24 casos distintos de navegador aprobados entre escritorio y móvil, incluidos corazones, acceso por modo, recarga única, saldo insuficiente, Google simulado después de privacidad, ES/EN, foco de teclado, Ranking y reinicio. La revisión visual incluye una ventana de 640 px de alto con el inicio completo sin scroll.
 
 Quedan pendientes las comprobaciones externas de la sección siguiente: playtest humano, OAuth y proveedor publicitario reales, y transacciones concurrentes entre conexiones PostgreSQL en staging. Esta verificación no aplica migraciones ni activa competencia en producción.
 

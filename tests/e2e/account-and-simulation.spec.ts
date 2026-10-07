@@ -76,7 +76,9 @@ async function mockAccount(page: Page, inventory: Partial<Record<AidId, number>>
       state.balance -= AID_CATALOG[id].price;
       state.inventory[id] = (state.inventory[id] ?? 0) + 1;
     }
+    if (body.action === 'buy-attempt') {state.balance-=30;state.attempts!.purchasedRemaining+=1;}
     if (body.action === 'start-run') {
+      if(body.mode==='daily'&&state.attempts){if(state.attempts.freeRemaining>0)state.attempts.freeRemaining--;else if(state.attempts.purchasedRemaining>0)state.attempts.purchasedRemaining--;else throw new Error('Daily ticket issued without lives');}
       if (runsStarted) expect(receiptCompleted).toBe(true);
       const ids = body.aids as AidId[];
       expect(ids.length).toBeLessThanOrEqual(2);
@@ -176,6 +178,49 @@ for (const fps of [30, 60, 120]) test(`browser physics at ${fps} requested frame
 
 test.describe('account API mocks with public client build flags enabled', () => {
   test.skip(!accountTests, 'Requires the dedicated Vite build with public fake Supabase config and PLAYWRIGHT_ACCOUNT_ENABLED=1');
+
+  test('Daily Google login continues from privacy directly to OAuth without the profile panel',async({page})=>{
+    const model=await mockAccount(page,{},'unknown');model.state.recoverable=false;
+    await page.goto('/?inspect=1');await page.getByRole('button',{name:'Daily Tower',exact:true}).click();
+    await page.getByRole('dialog',{name:'Daily Tower',exact:true}).getByRole('button',{name:'Continuar con Google',exact:true}).click();
+    await expect(page.getByRole('dialog',{name:'Antes de conectar.',exact:true})).toBeVisible();
+    await expect(page.locator('.mode-dialog[open]')).toHaveCount(0);
+    await page.locator('input[name="account-age"][value="adult"]').check();
+    await page.locator('input[name="account-ads-consent"][value="denied"]').check();
+    await page.locator('[data-account-action="privacy-continue"]').click();
+    await expect.poll(()=>page.url()).toContain('/auth/v1/authorize?provider=google');
+    expect(model.calls.some(call=>call.action==='start-run')).toBe(false);
+  });
+
+  test('exhausted Daily opens refill and a single coin purchase starts a new ticket', async ({page})=>{
+    const model=await mockAccount(page,{});
+    model.state.attempts={day:new Date().toISOString().slice(0,10),freeRemaining:0,adRemaining:0,purchasedRemaining:0,adAvailable:2,renewsAt:new Date(Date.now()+86400000).toISOString()};
+    await page.goto('/?inspect=1');
+    await expect(page.locator('.daily-heart.is-empty')).toHaveCount(3);
+    await page.getByRole('button',{name:'Daily Tower',exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Recargá tus vidas',exact:true});
+    await expect(dialog).toBeVisible();
+    expect(model.calls.filter(call=>call.action==='start-run')).toHaveLength(0);
+    await expect(dialog.locator('[data-action="ad-attempt"]')).toHaveCount(0);
+    await dialog.locator('[data-action="buy-attempt"]').click();
+    await expect.poll(async()=>(await snapshot(page))?.state).toBe('ready');
+    expect(model.state.balance).toBe(70);
+    expect(model.state.attempts.purchasedRemaining).toBe(0);
+    expect(model.calls.filter(call=>call.action==='buy-attempt')).toHaveLength(1);
+    expect(model.calls.filter(call=>call.action==='start-run')).toHaveLength(1);
+    expect(model.ticket?.mode).toBe('daily');
+    await expect(page.locator('dialog[open]')).toHaveCount(0);
+  });
+
+  test('exhausted Daily with insufficient balance cannot purchase or consume a ticket',async({page})=>{
+    const model=await mockAccount(page,{});model.state.balance=20;
+    model.state.attempts={day:new Date().toISOString().slice(0,10),freeRemaining:0,adRemaining:0,purchasedRemaining:0,adAvailable:0,renewsAt:new Date(Date.now()+86400000).toISOString()};
+    await page.goto('/?inspect=1');await expect(page.locator('.daily-heart.is-empty')).toHaveCount(3);
+    await page.getByRole('button',{name:'Daily Tower',exact:true}).click();
+    await expect(page.locator('dialog[open] [data-action="buy-attempt"]')).toBeDisabled();
+    await expect(page.locator('dialog[open]')).toContainText('No tenés suficientes monedas.');
+    expect(model.calls.filter(call=>['buy-attempt','start-run'].includes(call.action))).toHaveLength(0);
+  });
 
   test('buying and preparing aids spends only account coins, registers the loadout and pauses input in the aid panel', async ({ page }) => {
     const model = await mockAccount(page, { preview: 1, focus: 1 });

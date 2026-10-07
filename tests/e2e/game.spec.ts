@@ -235,10 +235,11 @@ test('one stable mouse click restarts despite repeated snapshots, rewards and ba
 test('mandatory public name rejects empty input and guests cannot enter competitive Daily',async({page})=>{
  await page.addInitScript(()=>localStorage.removeItem('impossible-tower.profile'));
  await page.goto('/');await page.getByRole('button',{name:'Juego libre',exact:true}).click();
+ await page.getByRole('button',{name:'Jugar como invitado',exact:true}).click();
  const name=page.getByRole('textbox',{name:'Nombre público obligatorio'});await expect(name).toBeVisible();
  await name.fill('   ');await page.getByRole('button',{name:'Continuar',exact:true}).click();await expect(name).toBeVisible();
  await name.fill('Tester');await page.getByRole('button',{name:'Continuar',exact:true}).click();
  await expect(page.getByRole('button',{name:'Pausar partida'})).toBeVisible();
  await page.getByRole('button',{name:'Pausar partida'}).click();await page.getByRole('button',{name:'VOLVER AL MENÚ',exact:true}).click();
- await page.getByRole('button',{name:'Daily Tower',exact:true}).click();await expect(page.getByText('Iniciá sesión con Google para jugar Daily.')).toBeVisible();
+ await page.getByRole('button',{name:'Daily Tower',exact:true}).click();await expect(page.getByRole('dialog',{name:'Daily Tower',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Continuar con Google',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Jugar como invitado',exact:true})).toHaveCount(0);
 });

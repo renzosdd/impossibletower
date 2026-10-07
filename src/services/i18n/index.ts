@@ -10,6 +10,7 @@ export function setLanguage(value:Language){language=value;try{localStorage.setI
 export function onLanguageChange(fn:()=>void){listeners.add(fn);return ()=>listeners.delete(fn);}
 /** Spanish is the authoring key; all English copy lives in one catalog. */
 export const EN:Record<string,string>={
+ 'Vidas disponibles:':'Lives available:', 'Recargá tus vidas':'Refill your lives', 'Una vida':'One life', '30 monedas':'30 coins', 'Ver anuncio':'Watch ad', 'No tenés suficientes monedas.':'Not enough coins.', 'Tus tres vidas gratis se renuevan cada día.':'Your three free lives renew each day.', 'Como invitado, tu progreso queda en este dispositivo.':'As a guest, your progress stays on this device.', 'Google todavía no está disponible.':'Google sign-in is not available yet.', 'No se pudo iniciar sesión. Reintentá.':'Unable to sign in. Try again.',
  'Juego libre':'Free play','Practicá y participá en el ranking mensual':'Practice and enter the monthly leaderboard','Competí por premios diarios':'Compete for daily prizes',
  'Tu récord histórico Daily':'Your all-time Daily best','Historial anterior a v3':'History before v3','Sin récord Daily todavía':'No Daily best yet',
  'Continuar con Google':'Continue with Google','Recuperar cuenta Google':'Recover Google account','Jugar como invitado':'Play as guest','Cerrar sesión':'Sign out',
@@ -56,6 +57,7 @@ ES["Invalid period"]="Período inválido.";EN["Invalid period"]="Invalid period.
 ES["Purchases and coin ads disabled"]="Compras y anuncios de monedas deshabilitados";EN["Purchases and coin ads disabled"]="Purchases and coin ads disabled";
 ES["Verification unavailable"]="Validación no disponible. Recursos compensados.";EN["Verification unavailable"]="Verification unavailable. Resources compensated.";
 const patterns:[RegExp,(m:RegExpMatchArray)=>string][]=[
+ [/^Vidas disponibles: (\d+)$/,m=>`Lives available: ${m[1]}`],
  [/^Historial anterior a v3 · (.+) m$/,m=>`History before v3 · ${m[1]} m`],
  [/^(\d+) coins$/,m=>`${m[1]} coins`],
  [/^(\w+)\. Altura (.+) metros\. (\d+) objetos apilados\.$/,m=>`${m[1]}. Height ${m[2]} meters. ${m[3]} objects stacked.`],

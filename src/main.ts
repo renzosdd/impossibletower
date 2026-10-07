@@ -41,6 +41,7 @@ let beforeRun: Profile = structuredClone(profile);
 let snapshot: GameSnapshot | undefined;
 let adActive = false, starting = false, manualPaused = false, secondChanceUsed = false, doubleCoinsUsed = false, committed = true, activeTrial = false;
 let installPrompt: InstallPrompt | undefined;
+let loginMode: 'daily' | 'casual' = 'daily';
 interface InstallPrompt extends Event { prompt(): Promise<void>; userChoice: Promise<{ outcome: string }>; }
 const params = new URLSearchParams(location.search), token = params.get('challenge');
 let challenge: Challenge | undefined = (token ? decodeChallenge(token) : null) ?? undefined;
@@ -138,8 +139,9 @@ async function start(config: RunConfig) {
  starting = true;ui.setStarting(true);
  try {
   if (privacyConsent.load().ageGroup === 'under13') { ui.toast('Impossible Tower es para mayores de 13 años.'); return; }
+  if(config.mode==='daily'&&params.get('debug')!=='1'&&!accountSnapshot?.recoverable){loginMode='daily';ui.showModeLogin('daily');return;}
+  if(config.mode==='daily'&&params.get('debug')!=='1'&&accountSnapshot?.attempts){await refreshAccount();const a=accountSnapshot?.attempts;if(a&&a.freeRemaining+a.adRemaining+a.purchasedRemaining<=0){ui.showDailyRefill();return;}}
   if(!requiredPublicName(profile.publicName)){const name=await ui.requestName();if(!name)return;profile.publicName=name;saveProfile(profile);}
-  if(config.mode==='daily'&&params.get('debug')!=='1'&&!accountSnapshot?.recoverable){accountUI.showAccount(accountView());ui.toast('Iniciá sesión con Google para jugar Daily.');return;}
   config = { ...config, ruleset:config.mode==='challenge'?(config.challenge?.version===3?'v3':'v2'):'v3', catalog: config.challenge?.version === 1 ? 'legacy-18' : config.challenge?.catalog ?? config.catalog ?? (config.mode === 'daily' ? 'legacy-18' : isObjectCatalog(import.meta.env.VITE_OBJECT_CATALOG) ? import.meta.env.VITE_OBJECT_CATALOG : CURRENT_OBJECT_CATALOG) };
   commit();
   scene?.pause(true);
@@ -152,7 +154,7 @@ async function start(config: RunConfig) {
    await pendingReceipt;
    runTicket = await account.startRun(config.mode, accountSnapshot?.recoverable?accountUI.getLoadout():[], undefined, profile.publicName);
    if (runTicket) { config = { ...config, seed: runTicket.seed, catalog: runTicket.catalog, ruleset: runTicket.ruleset }; accountUI.clearLoadout(); }
-   else if(config.mode==='daily'){ui.toast(account.lastError??'No se pudo iniciar Daily.');return;}else ui.toast('Sin conexión: esta práctica no participa en rankings ni acredita monedas.');
+   else if(config.mode==='daily'){if(account.lastError==='No Daily attempts left'){await refreshAccount();ui.showDailyRefill();}else ui.toast(account.lastError??'No se pudo iniciar Daily.');return;}else ui.toast('Sin conexión: esta práctica no participa en rankings ni acredita monedas.');
   }
   manualPaused = false;
   gameConfig = config;
@@ -252,12 +254,13 @@ async function handleAccount(action:AccountAction) {
  if(action.type==='guardian'){privacyConsent.saveGuardianAuthorization(action.authorized);return;}
  if(action.type==='adsConsent'){privacyConsent.saveAdsConsent(action.value);return;}
  if(action.type==='loadout')return;
- if(!privacyConsent.canUseOnlineServices()){accountUI.showPrivacySetup();return;}
+ if(!account.enabled&&action.type==='google'){ui.showModeLogin(loginMode,'Google todavía no está disponible.');return;}
+ if(!privacyConsent.canUseOnlineServices()){if(action.type==='google')ui.closeModeDialog();accountUI.showPrivacySetup(action.type==='google'?action:undefined);return;}
  if(!account.enabled){accountUI.showAccount({...accountView(),error:'La cuenta online todavía no está habilitada. Tu progreso local sigue disponible.'});return;}
- accountBusy=true;accountUI.setState(accountView());applyPause();
+ accountBusy=true;accountUI.setState(accountView());if(action.type==='google')ui.setLoginPending(true);applyPause();
  try {
   switch(action.type) {
-   case 'google': {if(!requiredPublicName(profile.publicName)){const name=await ui.requestName();if(!name)break;profile.publicName=name;saveProfile(profile);}await backend.initialize();await refreshAccount();const session=await backend.getAuthClient()?.auth.getSession();const link=!action.recover&&session?.data.session?.user.is_anonymous===true;if(link)await backend.syncProfile(profile);const ok=await account.google(link);if(!ok)accountUI.showAccount(accountView());break;}
+   case 'google': {accountUI.closeDialog();if(!requiredPublicName(profile.publicName)){ui.closeModeDialog();const name=await ui.requestName();if(!name)break;profile.publicName=name;saveProfile(profile);}ui.showModeLogin(loginMode);ui.setLoginPending(true);await backend.initialize();await refreshAccount();const session=await backend.getAuthClient()?.auth.getSession();const link=!action.recover&&session?.data.session?.user.is_anonymous===true;if(link)await backend.syncProfile(profile);const ok=await account.google(link);if(!ok)ui.showModeLogin(loginMode,account.lastError??'No se pudo iniciar sesión. Reintentá.');break;}
    case 'logout': {commit();if(!await account.signOut()){ui.toast(account.lastError??'No se pudo cerrar la sesión.');break;}accountSnapshot=null;runTicket=null;profile=defaultProfile();updateProfile();accountUI.closeDialog();gameConfig=undefined;lastResult=undefined;snapshot=undefined;accountUI.setRun(null);ui.setAccount(null);ui.showMenu(profile,challenge);break;}
    case 'invite': {await inviteFriends();break;}
    case 'login': {
@@ -287,7 +290,7 @@ async function handleAccount(action:AccountAction) {
    case 'buyCoins': {ui.toast('Compras próximamente');break;}
   }
  }catch(error){ui.toast(error instanceof Error?error.message:'La cuenta no respondió. Podés seguir jugando.');}
- finally{accountBusy=false;accountUI.setState(accountView());applyPause();refreshRewards();}
+ finally{accountBusy=false;ui.setLoginPending(false);accountUI.setState(accountView());applyPause();refreshRewards();}
 }
 async function handle(action: UIAction) {
  if(action.type==='language'){setLanguage(action.language);if(!gameConfig)ui.setAccount(accountSnapshot,ads.isRewardedAvailable());return;}
@@ -297,12 +300,12 @@ async function handle(action: UIAction) {
  switch (action.type) {
 
   case 'google':await handleAccount({type:'google'});break;
-  case 'guest':{const name=await ui.requestName();if(name){profile.publicName=name;updateProfile();await start({mode:'casual',seed:randomSeed()});}}break;
+  case 'guest':await start({mode:'casual',seed:randomSeed()});break;
   case 'finalize':commit();accountUI.renderMenu();break;
   case 'invite':await inviteFriends();break;
-  case 'buy-attempt':{accountBusy=true;ui.setAttemptPending(true);try{const state=await account.buyAttempt();if(state){accountSnapshot=state;ui.setAccount(state,ads.isRewardedAvailable());}else ui.toast(account.lastError??'Te faltan monedas.');}finally{accountBusy=false;ui.setAttemptPending(false);}}break;
+  case 'buy-attempt':{accountBusy=true;ui.setAttemptPending(true);let purchased=false;try{const state=await account.buyAttempt();if(state){purchased=true;accountSnapshot=state;ui.setAccount(state,ads.isRewardedAvailable());}else ui.toast(account.lastError??'Te faltan monedas.');}finally{accountBusy=false;ui.setAttemptPending(false);}if(purchased){ui.closeModeDialog();await start({mode:'daily',seed:dailySeed()});}}break;
   case 'ad-attempt':await rewardedAttempt();break;
-  case 'play': await start({ mode: action.mode, seed: action.mode === 'daily' ? dailySeed() : action.mode === 'challenge' && challenge ? challenge.seed : randomSeed(), challenge: action.mode === 'challenge' ? challenge : undefined }); break;
+  case 'play': if(action.mode==='casual'&&!accountSnapshot?.recoverable&&params.get('debug')!=='1'){loginMode='casual';ui.showModeLogin('casual');break;}await start({ mode: action.mode, seed: action.mode === 'daily' ? dailySeed() : action.mode === 'challenge' && challenge ? challenge.seed : randomSeed(), challenge: action.mode === 'challenge' ? challenge : undefined }); break;
   case 'restart': await start({ mode: gameConfig?.mode ?? 'casual', seed: gameConfig?.mode === 'casual' ? randomSeed() : gameConfig?.seed ?? dailySeed(), challenge: gameConfig?.challenge }); break;
   case 'drop': scene?.drop(); break;
   case 'pause': manualPaused = action.paused; applyPause(); break;
@@ -360,21 +363,22 @@ if (params.get('debug') === '1' || import.meta.env.DEV && params.get('inspect') 
 } });
 
 async function inviteFriends(){
- if(!accountSnapshot?.recoverable||!accountSnapshot.referral){accountUI.showAccount(accountView());return;}
+ if(!accountSnapshot?.recoverable||!accountSnapshot.referral){loginMode='daily';ui.showModeLogin('daily');return;}
  const url=new URL(location.origin+location.pathname);url.searchParams.set('ref',accountSnapshot.referral.code);
  try{if(navigator.share)await navigator.share({title:'Impossible Tower',text:t('Invitá amigos para activar los premios'),url:url.href});else{await navigator.clipboard.writeText(url.href);ui.toast('Enlace copiado.');}}catch(error){if(!(error instanceof Error&&error.name==='AbortError'))ui.showInviteLink(url.href);}
 }
 async function rewardedAttempt(){
  if(accountBusy||adActive||!accountSnapshot?.recoverable||!ads.isRewardedAvailable()||(accountSnapshot.attempts?.adAvailable??0)<=0)return;
- accountBusy=true;ui.setAttemptPending(true);applyPause();let intent:{id:string;expiresAt:string}|null=null;
+ accountBusy=true;ui.setAttemptPending(true);applyPause();let intent:{id:string;expiresAt:string}|null=null;let granted=false;
  try{
   intent=await account.adIntent('daily-attempt');if(!intent){ui.toast(account.lastError??'La cuenta no respondió.');return;}
   const response=await adBreak(()=>ads.rewardedAd('daily-attempt'));
   if(!response?.success||response.evidence!=='browser-callback'){await account.cancelAd(intent.id);ui.toast('El anuncio no se completó. No recibiste ni consumiste un intento extra.');return;}
   const state=await account.completeAd(intent.id,true,response.evidence);
-  if(state&&'balance'in state){accountSnapshot=state;ui.setAccount(state,ads.isRewardedAvailable());accountUI.setState(accountView());}
+  if(state&&'balance'in state){granted=true;accountSnapshot=state;ui.setAccount(state,ads.isRewardedAvailable());accountUI.setState(accountView());}
   else ui.toast(account.lastError??'La cuenta no respondió.');
  }finally{accountBusy=false;ui.setAttemptPending(false);applyPause();refreshRewards();}
+ if(granted){ui.closeModeDialog();await start({mode:'daily',seed:dailySeed()});}
 }
 // Refresh the homepage counters without recreating result buttons during clicks.
 setInterval(()=>{if(!accountBusy&&!adActive&&!starting){if(!gameConfig)void refreshAccount();void recoverPendingRuns();}},30000);

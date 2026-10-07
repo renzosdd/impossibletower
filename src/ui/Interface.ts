@@ -34,6 +34,7 @@ const icon = (name: string, className = ''): string => {
     lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/>',
     chart: '<path d="M4 20V9h4v11m2 0V4h4v16m2 0v-7h4v7"/>',
     download: '<path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5"/>',
+    heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',
     target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
     sound: '<path d="M3 9h4l5-4v14l-5-4H3Zm13-2a7 7 0 0 1 0 10m3-13a11 11 0 0 1 0 16"/>',
     music: '<path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/>',
@@ -68,6 +69,7 @@ export class Interface {
   private profile!: Profile;
   private account:AccountSnapshot|null=null;
   private adsAvailable=false;
+  private attemptButtons=new Map<HTMLButtonElement,{html:string;disabled:boolean}>();
   private provisional=false;
   private config?: RunConfig;
   private result?: RunResult;
@@ -301,8 +303,15 @@ export class Interface {
     if(button){button.disabled=busy;button.setAttribute('aria-busy',String(busy));const label=button.querySelector('span');if(label)label.textContent=t(busy?'INICIANDO…':'JUGAR DE NUEVO');}
   }
   setAttemptPending(busy:boolean):void {
-    this.root.querySelectorAll<HTMLButtonElement>('[data-action="buy-attempt"],[data-action="ad-attempt"]').forEach(button=>{button.disabled=busy;button.setAttribute('aria-busy',String(busy));if(busy)button.textContent=t('Procesando…');});
-    if(!busy&&this.screen==='menu')this.renderMenu();
+    if(busy){
+      this.root.querySelectorAll<HTMLButtonElement>('[data-action="buy-attempt"],[data-action="ad-attempt"]').forEach(button=>{
+        this.attemptButtons.set(button,{html:button.innerHTML,disabled:button.disabled});
+        button.disabled=true;button.setAttribute('aria-busy','true');button.textContent=t('Procesando…');
+      });
+    }else{
+      for(const [button,previous]of this.attemptButtons){if(button.isConnected){button.innerHTML=previous.html;button.disabled=previous.disabled;button.setAttribute('aria-busy','false');}}
+      this.attemptButtons.clear();
+    }
   }
   setProvisional(value:boolean):void {
     this.provisional=value;
@@ -324,14 +333,38 @@ export class Interface {
       dialog.querySelector<HTMLInputElement>('input')?.focus();
     });
   }
+  private dailyLives(): number {
+    const a = this.account?.attempts;
+    return a ? a.freeRemaining + a.adRemaining + a.purchasedRemaining : 3;
+  }
+
+  private hearts(): string {
+    const lives = Math.max(0, this.dailyLives());
+    return `<div class="daily-hearts" role="img" aria-label="${escape('Vidas disponibles: ' + lives)}">${Array.from({length:3},(_,i)=>`<span class="daily-heart ${i<lives?'is-full':'is-empty'}">${icon('heart')}</span>`).join('')}${lives>3?`<span class="daily-extra">+${lives-3}</span>`:''}</div>`;
+  }
+
+  showModeLogin(mode: 'daily' | 'casual', error = ''): void {
+    this.openDialog('mode-login', mode === 'daily' ? 'Daily Tower' : 'Juego libre', `<div class="mode-login-content"><span class="mode-dialog-symbol">${icon(mode==='daily'?'trophy':'play')}</span>${error?`<p class="mode-dialog-notice" role="status">${escape(error)}</p>`:''}<button type="button" class="google-login-button" data-action="google"><span class="google-mark" aria-hidden="true">G</span><span>Continuar con Google</span></button>${mode==='casual'?'<button type="button" class="guest-login-button" data-action="guest">Jugar como invitado</button><p class="mode-dialog-note">Como invitado, tu progreso queda en este dispositivo.</p>':''}</div>`);
+    this.dialog?.classList.add('mode-dialog');
+  }
+
+  setLoginPending(busy: boolean): void {
+    this.dialog?.querySelectorAll<HTMLButtonElement>('[data-action="google"],[data-action="guest"]').forEach(button=>{button.disabled=busy;button.setAttribute('aria-busy',String(busy));});
+  }
+
+  showDailyRefill(): void {
+    const canBuy = (this.account?.balance ?? 0) >= 30;
+    const canWatch = this.adsAvailable && (this.account?.attempts?.adAvailable ?? 0) > 0;
+    this.openDialog('daily-refill','Recargá tus vidas',`<div class="daily-refill-content">${this.hearts()}<button type="button" class="refill-option" data-action="buy-attempt" ${canBuy?'':'disabled'}>${icon('coin')}<span>Una vida<small>30 monedas</small></span>${icon('arrow')}</button>${canBuy?'':'<p class="mode-dialog-note">No tenés suficientes monedas.</p>'}${canWatch?`<button type="button" class="refill-option" data-action="ad-attempt">${icon('play')}<span>Una vida<small>Ver anuncio</small></span>${icon('arrow')}</button>`:''}<p class="mode-dialog-note">Tus tres vidas gratis se renuevan cada día.</p></div>`);
+    this.dialog?.classList.add('mode-dialog');
+  }
+
+  closeModeDialog(): void { this.closeDialog(); }
+
   private renderMenu(): void {
-    const a=this.account?.attempts;
-    const remaining=Math.max(0,Date.parse(a?.renewsAt??new Date(new Date().setUTCHours(24,0,0,0)).toISOString())-Date.now());
-    const countdown=`${Math.floor(remaining/3600000)}h ${Math.floor(remaining%3600000/60000)}m`;
     const legacyBest=Math.max(this.account?.legacyDailyBest??0,this.profile.legacyDailyBest??0);
     const best=Math.max(this.account?.dailyBest??0,legacyBest,...Object.values(this.profile.daily).map(d=>d.best));
-    const participants=this.account?.dailyParticipants??0;
-    this.host.innerHTML=`<section class="menu-screen v3-menu"><header class="menu-header"><span class="mini-wordmark"><span class="brand-mark">${icon('bolt')}</span> IT.</span><div class="language-toggle" aria-label="Idioma"><button type="button" data-action="language" data-language="es" aria-pressed="${getLanguage()==='es'}">ES</button><button type="button" data-action="language" data-language="en" aria-pressed="${getLanguage()==='en'}">EN</button></div><span class="coin-balance">${icon('coin')} <b>${this.account?.recoverable?this.account.balance:0}</b></span></header><div class="menu-title"><div class="menu-eyebrow">APILÁ LO IMPOSIBLE</div><h1>IMPOSSIBLE<br><span>TOWER</span></h1><p>La gravedad tiene otros planes.</p></div><div class="daily-record"><span>Tu récord histórico Daily</span><strong>${meters(best)} m</strong>${legacyBest>0?`<small>Historial anterior a v3 · ${meters(legacyBest)} m</small>`:''}</div><div class="mode-cards">${GAME_MODES.map(mode=>`<article class="mode-card ${mode.competitive?'mode-primary':''}"><button type="button" class="${mode.competitive?'primary-button':'daily-button'}" data-action="${mode.id==='daily'?'daily':'play'}"><span>${mode.title}</span>${icon('arrow')}</button><p>${mode.description}</p>${mode.competitive?`<div class="attempt-summary"><strong>${a?.freeRemaining??3} intentos gratis restantes</strong><span>Extras: ${a?.adRemaining??0} por anuncios · ${a?.purchasedRemaining??0} comprados</span><span>Renueva en ${countdown}</span></div><div class="prize-threshold"><strong>${participants<20?`Van ${participants} de 20 participantes`:`${participants} PARTICIPANTES`}</strong><p>${participants<20?'Invitá amigos para activar los premios':'Premios activados'}</p><button type="button" data-action="invite">Invitar amigos</button><button type="button" data-account-action="ranking" data-period="daily">${icon('chart')}Ranking</button></div>${this.account?.recoverable?`<div class="attempt-buttons"><button type="button" data-action="buy-attempt" ${(this.account.balance<30)?'disabled':''}>Comprar intento · 30 monedas</button>${this.adsAvailable&&(a?.adAvailable??0)>0?'<button type="button" data-action="ad-attempt">Ver anuncio · +1 intento</button>':''}</div>`:'<small>Google requerido</small>'}`:''}</article>`).join('')}</div>${this.challenge?`<article class="challenge-invite"><strong data-user-content>${escape(this.challenge.name??'')}</strong><p>DESAFÍO · ${meters(this.challenge.height)} m</p><button class="primary-button" type="button" data-action="challenge">ACEPTAR DESAFÍO</button></article>`:''}<div class="identity-controls">${this.account?.recoverable?`<strong data-user-content>${escape(this.profile.publicName)}</strong><button type="button" data-account-action="logout">Cerrar sesión</button>`:'<button type="button" data-action="google">Continuar con Google</button><button type="button" data-action="guest">Jugar como invitado</button><p>Como invitado podés practicar. Iniciá sesión con Google para competir en Daily y conservar tus monedas</p>'}</div><nav class="menu-nav" aria-label="Opciones del juego"><button type="button" data-account-action="account">Perfil</button><button type="button" data-action="achievements">${icon('trophy')}Insignias</button><button type="button" data-action="missions">${icon('target')}Misiones</button><button type="button" data-account-action="shop">${icon('skin')}Tienda</button><button type="button" data-action="settings">${icon('settings')}Ajustes</button></nav><footer class="menu-footer"><button type="button" data-action="privacy">Privacidad</button><button type="button" data-action="terms">Términos</button>${this.installAvailable?'<button type="button" data-action="install">Instalar</button>':''}<span>V3</span></footer></section>`;
+    this.host.innerHTML=`<section class="menu-screen v3-menu"><header class="menu-header"><span class="mini-wordmark"><span class="brand-mark">${icon('bolt')}</span> IT.</span>${languageControls()}<span class="coin-balance">${icon('coin')} <b>${this.account?.recoverable?this.account.balance:0}</b></span></header><div class="menu-title"><div class="menu-eyebrow">APILÁ LO IMPOSIBLE</div><h1>IMPOSSIBLE<br><span>TOWER</span></h1><p>La gravedad tiene otros planes.</p></div><div class="daily-record"><span>Tu récord histórico Daily</span><strong>${meters(best)} m</strong>${legacyBest>0?`<small>Historial anterior a v3 · ${meters(legacyBest)} m</small>`:''}</div><div class="mode-cards">${GAME_MODES.map(mode=>`<article class="mode-card ${mode.competitive?'mode-primary':''}"><button type="button" class="${mode.competitive?'primary-button':'daily-button'}" data-action="${mode.id==='daily'?'daily':'play'}"><span>${mode.title}</span>${icon('arrow')}</button>${mode.competitive?this.hearts():''}</article>`).join('')}</div>${this.challenge?`<article class="challenge-invite"><strong data-user-content>${escape(this.challenge.name??'')}</strong><p>DESAFÍO · ${meters(this.challenge.height)} m</p><button class="primary-button" type="button" data-action="challenge">ACEPTAR DESAFÍO</button></article>`:''}<nav class="menu-nav" aria-label="Opciones del juego"><button type="button" data-account-action="account">${icon('users')}Perfil</button><button type="button" data-account-action="ranking" data-period="daily">${icon('chart')}Ranking</button><button type="button" data-action="achievements">${icon('trophy')}Insignias</button><button type="button" data-action="missions">${icon('target')}Misiones</button><button type="button" data-account-action="shop">${icon('skin')}Tienda</button><button type="button" data-action="settings">${icon('settings')}Ajustes</button></nav><button type="button" class="invite-friends-button" data-action="invite">${icon('share')}Invitar amigos</button><footer class="menu-footer"><button type="button" data-action="privacy">Privacidad</button><button type="button" data-action="terms">Términos</button>${this.installAvailable?'<button type="button" data-action="install">Instalar</button>':''}<span>V3</span></footer></section>`;
   }
 
   private renderResult(): void {
@@ -356,7 +389,7 @@ export class Interface {
     }
     if (action === 'play' || action === 'daily' || action === 'challenge') { this.onAction({ type: 'play', mode: action === 'play' ? 'casual' : action === 'daily' ? 'daily' : 'challenge' }); return; }
     if(action==='language'){this.onAction({type:'language',language:button.dataset.language==='en'?'en':'es'});return;}
-    if(['google','guest','invite','buy-attempt','ad-attempt','finalize'].includes(action??'')){this.onAction({type:action as 'google'|'guest'|'invite'|'buy-attempt'|'ad-attempt'|'finalize'});return;}
+    if(['google','guest','invite','buy-attempt','ad-attempt','finalize'].includes(action??'')){if(action==='guest')this.closeDialog();this.onAction({type:action as 'google'|'guest'|'invite'|'buy-attempt'|'ad-attempt'|'finalize'});return;}
     if (action === 'restart' || action === 'menu') { this.closeDialog(); this.onAction({ type: action }); return; }
     if (action === 'pause') { this.paused = true; this.onAction({ type: 'pause', paused: true }); this.openPause(); return; }
     if (action === 'resume') { this.paused = false; this.closeDialog(); this.onAction({ type: 'pause', paused: false }); return; }
@@ -395,6 +428,7 @@ export class Interface {
 
   private openDialog(kind: string, title: string, body: string): void {
     const focused = document.activeElement as HTMLElement;
+    const focusedAction = focused?.dataset.action;
     this.closeDialog();
     const dialog = document.createElement('dialog');
     dialog.className = 'ui-dialog';
@@ -409,7 +443,7 @@ export class Interface {
         this.onAction({ type: 'pause', paused: false });
       }
     });
-    dialog.addEventListener('close', () => { if (focused?.isConnected) focused.focus(); });
+    dialog.addEventListener('close', () => { if (focused?.isConnected) focused.focus();else if(focusedAction)this.root.querySelector<HTMLElement>(`[data-action="${CSS.escape(focusedAction)}"]`)?.focus(); });
     dialog.addEventListener('click', event => {
       if (event.target === dialog) {
         const bounds = dialog.getBoundingClientRect();
