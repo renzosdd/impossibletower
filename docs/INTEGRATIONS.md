@@ -1,3 +1,5 @@
+> Para V3, usar [V3-LAUNCH.md](V3-LAUNCH.md). Las etapas semanales y recompensas V2 de este archivo son históricas y no se habilitan en la entrega actual.
+
 # Activación de integraciones
 
 Distribución: el mismo sitio de Netlify. Los tests locales no demuestran aprobación de Google, pagos reales, entrega de emails ni ejecución del scheduler en producción. Registrar esos resultados por separado en `VALIDATION.md`.

@@ -1,6 +1,12 @@
+import { requiredPublicName } from '../services/backend';
+import { GAME_MODES } from '../content/modes';
+import type { AccountSnapshot } from '../types/account';
+import { BADGES } from '../content/achievements';
+import { nearBadges } from '../services/storage/progress';
+import { getLanguage, t } from '../services/i18n';
 import type { Challenge, GameSnapshot, Profile, RunConfig, RunResult, UIAction } from '../types';
 import { COSMETICS } from '../content/cosmetics';
-import { MISSIONS, getActiveMissions } from '../content/missions';
+import { MISSIONS, getActiveMissions, DAILY_MISSIONS } from '../content/missions';
 import { ACHIEVEMENTS } from '../content/achievements';
 import { LEGAL_DOCUMENTS, renderLegalBody } from '../content/legal';
 
@@ -36,6 +42,8 @@ const icon = (name: string, className = ''): string => {
   return `<svg class="icon ${className}" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.bolt}</svg>`;
 };
 
+export const languageControls = () => `<div class="language-toggle" aria-label="Idioma"><button type="button" data-action="language" data-language="es" aria-pressed="${getLanguage()==='es'}">ES</button><button type="button" data-action="language" data-language="en" aria-pressed="${getLanguage()==='en'}">EN</button></div>`;
+
 // Original lightweight artwork. All objects and shapes are drawn for this game.
 const towerArt = (): string => `<svg class="tower-art" viewBox="0 0 380 270" fill="none" aria-hidden="true">
   <defs><pattern id="tower-dots" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#7AABA8" opacity=".22"/></pattern></defs>
@@ -58,6 +66,9 @@ export class Interface {
   private root: HTMLElement;
   private onAction: (action: UIAction) => void;
   private profile!: Profile;
+  private account:AccountSnapshot|null=null;
+  private adsAvailable=false;
+  private provisional=false;
   private config?: RunConfig;
   private result?: RunResult;
   private screen: Screen = 'menu';
@@ -93,7 +104,7 @@ export class Interface {
     this.desktop = document.createElement('aside');
     this.desktop.className = 'desktop-context';
     this.desktop.setAttribute('aria-label', 'Impossible Tower');
-    this.desktop.innerHTML = `<section class="desktop-left"><a class="desktop-wordmark" href="${escape(location.pathname)}" aria-label="Impossible Tower, inicio"><span class="brand-mark">${icon('bolt')}</span> IMPOSSIBLE TOWER<span class="edition-badge">VOL. 01</span></a><div class="desktop-editorial"><span class="eyebrow"><span class="status-dot"></span> UN DEDO. TODA LA GRAVEDAD.</span><h1>EL CIELO<br>ES EL<br><span>LÍMITE.</span><span class="editorial-star" aria-hidden="true"><svg width="59" height="59" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M30 6v48M6 30h48M13 13l34 34M13 47l34-34"/></svg></span></h1><p>Una caja, un sofá, un cohete.<br>Apilá lo imposible. Desafiá a tus amigos.</p><div class="editorial-controls"><span>${icon('target')} UN TOQUE PARA SOLTAR</span><span class="keyboard-key">ESPACIO</span></div></div><div class="desktop-bottom"><span>HECHO PARA CAER.<br><strong>Y VOLVER A EMPEZAR.</strong></span><span class="tiny-arrow">${icon('arrow')}</span></div></section><section class="desktop-right"><div class="side-heading"><span class="eyebrow">TU MEJOR VERSIÓN</span><span class="side-counter">01 / ∞</span></div><div class="desktop-record"><span class="record-label">RÉCORD PERSONAL</span><div><span data-desktop-best>0.0</span><small>m</small></div><p>Siempre hay un poco más de cielo.</p></div><div class="object-gallery"><div class="gallery-label"><span>EL ORDEN, IMPROVISADO.</span><span>↓</span></div><div class="gallery-object gallery-box"><svg viewBox="0 0 140 95" aria-hidden="true"><path d="m27 30 23-14h61v47L88 79H27Z" fill="#B18548"/><path d="M27 30h61v49H27Z" fill="#E7BC74"/><path d="m27 30 23-14h61L88 30Z" fill="#F5D497"/><path d="M54 30h13v49H54Z" fill="#FBE4B8"/><path d="m54 30 23-14h13L67 30Z" fill="#FFEDD0"/></svg><span>01 — LA CAJA</span><span class="object-tag">FÁCIL</span></div><div class="gallery-object gallery-rocket"><svg viewBox="0 0 140 130" aria-hidden="true"><path d="m61 34 17-24 16 24v51H61Z" fill="#EFF0D9"/><path d="m61 34 17-24v75H61Z" fill="#C7D8CA"/><path d="m61 65-16 23v15l16-9m33-29 16 23v15-16-9" fill="#DF715A"/><circle cx="78" cy="44" r="9" fill="#3D727A"/><circle cx="78" cy="44" r="5" fill="#92BAB5"/><path d="M69 85h17v12H69Z" fill="#3B5A58"/><path d="m70 101 8 20 8-20" fill="#EDC656"/></svg><span>18 — EL COHETE</span><span class="object-tag">ABSURDO</span></div></div><div class="daily-note">${icon('calendar')}<p><strong>Una torre nueva cada día.</strong><br>La misma secuencia para todos.<br>Tu timing hace la diferencia.</p></div><div class="desktop-legal"><button type="button" data-legal="privacy">Privacidad</button><span>·</span><button type="button" data-legal="terms">Términos</button><span class="desktop-version">V1.0 / PHYSICS ARCADE</span></div></section>`;
+    this.desktop.innerHTML = `<section class="desktop-left"><a class="desktop-wordmark" href="${escape(location.pathname)}" aria-label="Impossible Tower, inicio"><span class="brand-mark">${icon('bolt')}</span> IMPOSSIBLE TOWER<span class="edition-badge">VOL. 01</span></a><div class="desktop-editorial"><span class="eyebrow"><span class="status-dot"></span> UN DEDO. TODA LA GRAVEDAD.</span><h1>EL CIELO<br>ES EL<br><span>LÍMITE.</span><span class="editorial-star" aria-hidden="true"><svg width="59" height="59" viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M30 6v48M6 30h48M13 13l34 34M13 47l34-34"/></svg></span></h1><p>Una caja, un sofá, un cohete.<br>Apilá lo imposible. Desafiá a tus amigos.</p><div class="editorial-controls"><span>${icon('target')} UN TOQUE PARA SOLTAR</span><span class="keyboard-key">ESPACIO</span></div></div><div class="desktop-bottom"><span>HECHO PARA CAER.<br><strong>Y VOLVER A EMPEZAR.</strong></span><span class="tiny-arrow">${icon('arrow')}</span></div></section><section class="desktop-right"><div class="side-heading"><span class="eyebrow">TU MEJOR VERSIÓN</span><span class="side-counter">01 / ∞</span></div><div class="desktop-record"><span class="record-label">Tu récord histórico Daily</span><div><span data-desktop-best>0.0</span><small>m</small></div><p>Siempre hay un poco más de cielo.</p></div><div class="object-gallery"><div class="gallery-label"><span>EL ORDEN, IMPROVISADO.</span><span>↓</span></div><div class="gallery-object gallery-box"><svg viewBox="0 0 140 95" aria-hidden="true"><path d="m27 30 23-14h61v47L88 79H27Z" fill="#B18548"/><path d="M27 30h61v49H27Z" fill="#E7BC74"/><path d="m27 30 23-14h61L88 30Z" fill="#F5D497"/><path d="M54 30h13v49H54Z" fill="#FBE4B8"/><path d="m54 30 23-14h13L67 30Z" fill="#FFEDD0"/></svg><span>01 — LA CAJA</span><span class="object-tag">FÁCIL</span></div><div class="gallery-object gallery-rocket"><svg viewBox="0 0 140 130" aria-hidden="true"><path d="m61 34 17-24 16 24v51H61Z" fill="#EFF0D9"/><path d="m61 34 17-24v75H61Z" fill="#C7D8CA"/><path d="m61 65-16 23v15l16-9m33-29 16 23v15-16-9" fill="#DF715A"/><circle cx="78" cy="44" r="9" fill="#3D727A"/><circle cx="78" cy="44" r="5" fill="#92BAB5"/><path d="M69 85h17v12H69Z" fill="#3B5A58"/><path d="m70 101 8 20 8-20" fill="#EDC656"/></svg><span>18 — EL COHETE</span><span class="object-tag">ABSURDO</span></div></div><div class="daily-note">${icon('calendar')}<p><strong>Una torre nueva cada día.</strong><br>La misma secuencia para todos.<br>Tu timing hace la diferencia.</p></div><div class="desktop-legal"><button type="button" data-legal="privacy">Privacidad</button><span>·</span><button type="button" data-legal="terms">Términos</button><span class="desktop-version">V1.0 / PHYSICS ARCADE</span></div></section>`;
     (document.querySelector('#app') || document.body).append(this.desktop);
     root.addEventListener('click', event => this.handleClick(event));
     this.desktop.addEventListener('click', event => {
@@ -127,7 +138,7 @@ export class Interface {
     this.tutorialForRun = !profile.tutorialComplete;
     this.root.dataset.screen = 'game';
     const mode = config.mode === 'daily' ? 'DAILY TOWER' : config.mode === 'challenge' ? 'DESAFÍO' : 'FREE STACK';
-    this.host.innerHTML = `<section class="game-screen" aria-label="Partida de Impossible Tower"><header class="game-header"><div class="mode-label"><span class="status-dot"></span>${mode}</div><button class="icon-button pause-button" type="button" data-action="pause" aria-label="Pausar partida">${icon('pause')}</button></header><div class="height-hud"><span class="hud-caption">ALTURA</span><div class="height-value"><span data-hud="height">0.0</span><small>m</small></div><div class="score-hud"><span>SCORE <b data-hud="score">0</b></span><span class="hud-divider"></span><span><b data-hud="objects">0</b> OBJETOS</span></div></div>${config.challenge ? `<div class="challenge-target">${icon('target')} OBJETIVO <strong>${meters(config.challenge.height)} m</strong></div>` : ''}<div class="combo-hud" data-hud="combo"></div><div class="next-object-hud"><span>SIGUIENTE</span><strong data-hud="next">…</strong><span class="object-material">↓</span></div><div class="tap-hint" data-hud="hint">${icon('target')} ${profile.tutorialComplete ? 'TOCÁ PARA SOLTAR' : 'Tocá para soltar'}<span class="tap-hint-line"></span></div><div class="game-bottom-mark">IMPOSSIBLE<span> TOWER</span></div><span class="sr-only" data-hud="status" aria-live="polite"></span></section>`;
+    this.host.innerHTML = `<section class="game-screen" aria-label="Partida de Impossible Tower"><header class="game-header"><div class="mode-label"><span class="status-dot"></span>${mode}</div>${languageControls()}<button class="icon-button pause-button" type="button" data-action="pause" aria-label="Pausar partida">${icon('pause')}</button></header><div class="height-hud"><span class="hud-caption">ALTURA</span><div class="height-value"><span data-hud="height">0.0</span><small>m</small></div><div class="score-hud"><span>SCORE <b data-hud="score">0</b></span><span class="hud-divider"></span><span><b data-hud="objects">0</b> OBJETOS</span></div></div>${config.challenge ? `<div class="challenge-target">${icon('target')} OBJETIVO <strong>${meters(config.challenge.height)} m</strong></div>` : ''}<div class="combo-hud" data-hud="combo"></div><div class="next-object-hud"><span>SIGUIENTE</span><strong data-hud="next">…</strong><span class="object-material">↓</span></div><div class="tap-hint" data-hud="hint">${icon('target')} ${profile.tutorialComplete ? 'TOCÁ PARA SOLTAR' : 'Tocá para soltar'}<span class="tap-hint-line"></span></div><div class="game-bottom-mark">IMPOSSIBLE<span> TOWER</span></div><span class="sr-only" data-hud="status" aria-live="polite"></span></section>`;
   }
 
   update(snapshot: GameSnapshot): void {
@@ -194,7 +205,7 @@ export class Interface {
     this.profile = profile;
     this.updateDesktop();
     if (this.screen === 'menu' && this.profile) this.renderMenu();
-    if (this.screen === 'result') this.renderResult();
+    // Preserve the result buttons during account polling and pointer clicks.
     if (this.dialog?.open && this.dialog.dataset.kind === 'skins') this.renderSkinsBody();
   }
 
@@ -228,6 +239,9 @@ export class Interface {
     this.momentTimer = window.setTimeout(() => target.classList.remove('visible'), 2300);
   }
 
+  showInviteLink(url:string):void {
+    this.openDialog('invite','Invitar amigos',`<p>Copiá tu enlace para invitar amigos.</p><label for="challenge-link">Tu enlace personal</label><textarea id="challenge-link" readonly>${escape(url)}</textarea><button type="button" data-action="copy-share">COPIAR ENLACE</button>`);
+  }
   showShareLink(url: string): void {
     this.openDialog('share-link', 'La revancha empieza acá.', `<p class="dialog-description">Mandale este enlace a un amigo. Va a jugar exactamente la misma secuencia que vos.</p><label class="share-link-label" for="challenge-link">TU ENLACE DE DESAFÍO</label><textarea id="challenge-link" class="share-link-input" readonly rows="4" spellcheck="false">${escape(url)}</textarea><button class="primary-button" type="button" data-action="copy-share">COPIAR ENLACE ${icon('share')}</button><p class="fine-print">También podés seleccionar el enlace y copiarlo manualmente.</p>`);
     const input = this.dialog?.querySelector<HTMLTextAreaElement>('#challenge-link');
@@ -238,7 +252,7 @@ export class Interface {
     this.rewardAvailable = available;
     this.canSecondChance = canSecondChance;
     this.canDoubleCoins = canDoubleCoins;
-    if (this.screen === 'result') this.renderResult();
+    // Preserve the result buttons during account polling and pointer clicks.
     if (this.dialog?.open && this.dialog.dataset.kind === 'skins') this.renderSkinsBody();
   }
 
@@ -276,10 +290,48 @@ export class Interface {
 
   private get host(): HTMLElement { return this.root.querySelector<HTMLElement>('.screen-host')!; }
 
+  setAccount(snapshot:AccountSnapshot|null,adsAvailable=false):void {
+    this.account=snapshot;this.adsAvailable=adsAvailable;
+    if(this.screen==='menu')this.renderMenu();
+    this.updateDesktop();
+  }
+  setStarting(busy:boolean):void {
+    this.root.querySelectorAll<HTMLButtonElement>('[data-action="play"],[data-action="daily"],[data-action="challenge"]').forEach(button=>{button.disabled=busy;button.setAttribute('aria-busy',String(busy));});
+    const button=this.root.querySelector<HTMLButtonElement>('[data-action="restart"]');
+    if(button){button.disabled=busy;button.setAttribute('aria-busy',String(busy));const label=button.querySelector('span');if(label)label.textContent=t(busy?'INICIANDO…':'JUGAR DE NUEVO');}
+  }
+  setAttemptPending(busy:boolean):void {
+    this.root.querySelectorAll<HTMLButtonElement>('[data-action="buy-attempt"],[data-action="ad-attempt"]').forEach(button=>{button.disabled=busy;button.setAttribute('aria-busy',String(busy));if(busy)button.textContent=t('Procesando…');});
+    if(!busy&&this.screen==='menu')this.renderMenu();
+  }
+  setProvisional(value:boolean):void {
+    this.provisional=value;
+    const host=this.root.querySelector<HTMLElement>('.result-finalization');
+    if(host)host.innerHTML=value?'<p>Resultado provisional</p><button type="button" class="plain-button" data-action="finalize">FINALIZAR PARTIDA</button>':'';
+  }
+  showProgress(missions:string[]=[],badges:string[]=[],verified=false,coins=0):void {
+    const host=this.root.querySelector<HTMLElement>('.result-progress');if(!host)return;
+    const near=nearBadges(this.profile);
+    host.innerHTML=`${verified?'<p>Progreso verificado</p>':''}${coins?`<strong>Ganaste ${coins} monedas</strong>`:''}${missions.map(id=>`<div><small>MISIÓN COMPLETADA</small><strong>${escape(DAILY_MISSIONS.find(m=>m.id===id)?.name??id)}</strong></div>`).join('')}${badges.map(id=>`<div><small>INSIGNIA DESBLOQUEADA</small><strong>${escape(BADGES.find(b=>b.id===id)?.name??id)}</strong></div>`).join('')}${near.map(b=>`<div><small>CASI CONSEGUIDA</small><strong><span>${escape(b.name)}</span> · ${Math.floor(b.progress/b.target*100)}%</strong><progress max="${b.target}" value="${b.progress}"></progress></div>`).join('')}`;
+  }
+  requestName():Promise<string|null>{
+    this.openDialog('name','Elegí tu nombre',`<form data-name-form><label for="required-name">Nombre público obligatorio</label><input class="account-input" id="required-name" name="name" maxlength="24" autocomplete="nickname" required value="${escape(this.profile.publicName)}" placeholder="¿Cómo te llaman?"><button class="primary-button" type="submit">Continuar</button></form>`);
+    const dialog=this.dialog!;
+    return new Promise(resolve=>{
+      let done=false;
+      dialog.addEventListener('submit',event=>{event.preventDefault();const value=requiredPublicName((dialog.querySelector('input') as HTMLInputElement).value);if(!value||value==='Anónimo')return;done=true;this.closeDialog();resolve(value);});
+      dialog.addEventListener('close',()=>{if(!done)resolve(null);},{once:true});
+      dialog.querySelector<HTMLInputElement>('input')?.focus();
+    });
+  }
   private renderMenu(): void {
-    const today = new Date().toISOString().slice(0, 10);
-    const daily = this.profile.daily[today];
-    this.host.innerHTML = `<section class="menu-screen"><div class="menu-background"><div class="menu-orbit"></div><span class="background-cross cross-one">+</span><span class="background-cross cross-two">+</span></div><header class="menu-header"><span class="mini-wordmark"><span class="brand-mark">${icon('bolt')}</span> IT.</span><span class="coin-balance">${icon('coin')} <b>${this.profile.coins}</b></span></header><div class="menu-title"><div class="menu-eyebrow"><span class="status-dot"></span> APILÁ LO IMPOSIBLE</div><h1>IMPOSSIBLE<br><span>TOWER</span><span class="title-dot">+</span></h1><p>La gravedad tiene otros planes.</p></div><div class="menu-art">${towerArt()}<div class="best-sticker"><span>${icon('trophy')} TU RÉCORD</span><strong>${meters(this.profile.personalBest)}<small> m</small></strong></div><span class="art-caption">UN POCO DE TIMING.<br>UN POCO DE CAOS.</span></div>${this.challenge ? `<div class="challenge-invite"><span>${icon('users')} DESAFÍO RECIBIDO</span><p><strong>${escape(this.challenge.name || 'Un amigo')}</strong> llegó a <strong>${meters(this.challenge.height)} m</strong>.<br>¿Podés superarlo?</p></div>` : ''}<div class="menu-actions"><button type="button" class="primary-button play-button" data-action="${this.challenge ? 'challenge' : 'play'}"><span>${this.challenge ? 'ACEPTAR DESAFÍO' : 'JUGAR'}</span>${icon('arrow')}</button><button type="button" class="daily-button" data-action="daily"><span class="daily-icon">${icon('calendar')}</span><span><strong>DAILY TOWER</strong><small>${daily ? `HOY: ${meters(daily.best)} m · ${daily.attempts} INTENTO${daily.attempts === 1 ? '' : 'S'}${this.profile.dailyStreak ? ` · RACHA ${this.profile.dailyStreak}` : ''}` : 'LA MISMA TORRE. UN NUEVO DESAFÍO.'}</small></span>${icon('arrow')}</button></div><nav class="menu-nav" aria-label="Opciones del juego"><button type="button" data-action="skins">${icon('skin')}<span>Skins</span></button><button type="button" data-action="achievements">${icon('trophy')}<span>Logros</span></button><button type="button" data-action="missions">${icon('target')}<span>Misiones</span></button><button type="button" data-action="settings">${icon('settings')}<span>Ajustes</span></button>${this.backendAvailable ? `<button type="button" data-action="ranking-today">${icon('chart')}<span>Ranking</span></button>` : ''}</nav><footer class="menu-footer"><span>UN TOQUE PARA SOLTAR. NADA MÁS.</span>${this.installAvailable ? `<button type="button" data-action="install" class="install-link">${icon('download')} Instalar</button>` : '<span class="menu-version">V1.0</span>'}</footer></section>`;
+    const a=this.account?.attempts;
+    const remaining=Math.max(0,Date.parse(a?.renewsAt??new Date(new Date().setUTCHours(24,0,0,0)).toISOString())-Date.now());
+    const countdown=`${Math.floor(remaining/3600000)}h ${Math.floor(remaining%3600000/60000)}m`;
+    const legacyBest=Math.max(this.account?.legacyDailyBest??0,this.profile.legacyDailyBest??0);
+    const best=Math.max(this.account?.dailyBest??0,legacyBest,...Object.values(this.profile.daily).map(d=>d.best));
+    const participants=this.account?.dailyParticipants??0;
+    this.host.innerHTML=`<section class="menu-screen v3-menu"><header class="menu-header"><span class="mini-wordmark"><span class="brand-mark">${icon('bolt')}</span> IT.</span><div class="language-toggle" aria-label="Idioma"><button type="button" data-action="language" data-language="es" aria-pressed="${getLanguage()==='es'}">ES</button><button type="button" data-action="language" data-language="en" aria-pressed="${getLanguage()==='en'}">EN</button></div><span class="coin-balance">${icon('coin')} <b>${this.account?.recoverable?this.account.balance:0}</b></span></header><div class="menu-title"><div class="menu-eyebrow">APILÁ LO IMPOSIBLE</div><h1>IMPOSSIBLE<br><span>TOWER</span></h1><p>La gravedad tiene otros planes.</p></div><div class="daily-record"><span>Tu récord histórico Daily</span><strong>${meters(best)} m</strong>${legacyBest>0?`<small>Historial anterior a v3 · ${meters(legacyBest)} m</small>`:''}</div><div class="mode-cards">${GAME_MODES.map(mode=>`<article class="mode-card ${mode.competitive?'mode-primary':''}"><button type="button" class="${mode.competitive?'primary-button':'daily-button'}" data-action="${mode.id==='daily'?'daily':'play'}"><span>${mode.title}</span>${icon('arrow')}</button><p>${mode.description}</p>${mode.competitive?`<div class="attempt-summary"><strong>${a?.freeRemaining??3} intentos gratis restantes</strong><span>Extras: ${a?.adRemaining??0} por anuncios · ${a?.purchasedRemaining??0} comprados</span><span>Renueva en ${countdown}</span></div><div class="prize-threshold"><strong>${participants<20?`Van ${participants} de 20 participantes`:`${participants} PARTICIPANTES`}</strong><p>${participants<20?'Invitá amigos para activar los premios':'Premios activados'}</p><button type="button" data-action="invite">Invitar amigos</button><button type="button" data-account-action="ranking" data-period="daily">${icon('chart')}Ranking</button></div>${this.account?.recoverable?`<div class="attempt-buttons"><button type="button" data-action="buy-attempt" ${(this.account.balance<30)?'disabled':''}>Comprar intento · 30 monedas</button>${this.adsAvailable&&(a?.adAvailable??0)>0?'<button type="button" data-action="ad-attempt">Ver anuncio · +1 intento</button>':''}</div>`:'<small>Google requerido</small>'}`:''}</article>`).join('')}</div>${this.challenge?`<article class="challenge-invite"><strong data-user-content>${escape(this.challenge.name??'')}</strong><p>DESAFÍO · ${meters(this.challenge.height)} m</p><button class="primary-button" type="button" data-action="challenge">ACEPTAR DESAFÍO</button></article>`:''}<div class="identity-controls">${this.account?.recoverable?`<strong data-user-content>${escape(this.profile.publicName)}</strong><button type="button" data-account-action="logout">Cerrar sesión</button>`:'<button type="button" data-action="google">Continuar con Google</button><button type="button" data-action="guest">Jugar como invitado</button><p>Como invitado podés practicar. Iniciá sesión con Google para competir en Daily y conservar tus monedas</p>'}</div><nav class="menu-nav" aria-label="Opciones del juego"><button type="button" data-account-action="account">Perfil</button><button type="button" data-action="achievements">${icon('trophy')}Insignias</button><button type="button" data-action="missions">${icon('target')}Misiones</button><button type="button" data-account-action="shop">${icon('skin')}Tienda</button><button type="button" data-action="settings">${icon('settings')}Ajustes</button></nav><footer class="menu-footer"><button type="button" data-action="privacy">Privacidad</button><button type="button" data-action="terms">Términos</button>${this.installAvailable?'<button type="button" data-action="install">Instalar</button>':''}<span>V3</span></footer></section>`;
   }
 
   private renderResult(): void {
@@ -287,7 +339,7 @@ export class Interface {
     const challengeMessage = result.mode === 'challenge' && this.config?.challenge
       ? (result.challengeWon ? 'GANASTE EL DESAFÍO' : `TE FALTARON ${meters(Math.max(0, this.config.challenge.height - result.height))} m`)
       : result.personalBest ? 'NUEVO RÉCORD PERSONAL' : result.reason === 'collapse' ? 'LA GRAVEDAD GANÓ ESTA VEZ' : 'UNA MÁS. UN POCO MÁS ALTO.';
-    this.host.innerHTML = `<section class="result-screen"><div class="result-grid"></div><header class="result-header"><span class="mini-wordmark"><span class="brand-mark">${icon('bolt')}</span> IT.</span><button class="icon-button" type="button" data-action="menu" aria-label="Volver al menú">${icon('home')}</button></header><div class="result-heading"><span class="result-eyebrow ${result.personalBest || result.challengeWon ? 'is-record' : ''}">${result.personalBest || result.challengeWon ? icon('trophy') : icon('bolt')}${escape(challengeMessage)}</span><h1>${result.height > 0 ? 'BIEN ALTO.<br><span>BIEN HECHO.</span>' : 'CASI, CASI.<br><span>OTRA MÁS.</span>'}</h1></div><div class="result-height"><span class="result-height-label">TU TORRE LLEGÓ A</span><div><strong>${meters(result.height)}</strong><span>m</span></div><span class="height-rule"><i></i><span>EL CIELO PUEDE ESPERAR</span><i></i></span></div><div class="result-stats"><div><strong>${result.objectsPlaced}</strong><span>OBJETOS</span></div><div><strong>${result.perfectDrops}</strong><span>PERFECT DROPS</span></div><div><strong>${result.score}</strong><span>SCORE</span></div></div><div class="result-record"><span>${icon('trophy')} RÉCORD PERSONAL <strong>${meters(this.profile.personalBest)} m</strong></span><span class="result-coins">${icon('coin')} +${result.coins}</span></div><div class="result-actions"><button class="primary-button" type="button" data-action="restart"><span>JUGAR DE NUEVO</span>${icon('arrow')}</button><button class="challenge-button" type="button" data-action="challenge-share">${icon('users')}<span>DESAFIAR A UN AMIGO</span>${icon('arrow')}</button><button class="share-button" type="button" data-action="share">${icon('share')} COMPARTIR RESULTADO</button></div><div class="reward-actions">${this.rewardAvailable && this.canSecondChance ? `<button class="reward-button" type="button" data-action="second-chance">${icon('bolt')} Segunda oportunidad <span>VER ANUNCIO</span></button>` : ''}${this.rewardAvailable && this.canDoubleCoins && result.coins > 0 ? `<button class="reward-button" type="button" data-action="double-coins">${icon('coin')} Duplicar coins <span>VER ANUNCIO</span></button>` : ''}</div><footer class="result-footer">${result.mode === 'daily' ? `${icon('calendar')} DAILY TOWER · ${this.profile.dailyStreak} DÍA${this.profile.dailyStreak === 1 ? '' : 'S'} DE RACHA` : 'DE UNA CAJA A UN COHETE. VOLVÉ A INTENTAR.'}</footer></section>`;
+    this.host.innerHTML = `<section class="result-screen"><div class="result-grid"></div><header class="result-header"><span class="mini-wordmark"><span class="brand-mark">${icon('bolt')}</span> IT.</span>${languageControls()}<button class="icon-button" type="button" data-action="menu" aria-label="Volver al menú">${icon('home')}</button></header><div class="result-heading"><span class="result-eyebrow ${result.personalBest || result.challengeWon ? 'is-record' : ''}">${result.personalBest || result.challengeWon ? icon('trophy') : icon('bolt')}${escape(challengeMessage)}</span><h1>${result.height > 0 ? 'BIEN ALTO.<br><span>BIEN HECHO.</span>' : 'CASI, CASI.<br><span>OTRA MÁS.</span>'}</h1></div><div class="result-height"><span class="result-height-label">TU TORRE LLEGÓ A</span><div><strong>${meters(result.height)}</strong><span>m</span></div><span class="height-rule"><i></i><span>EL CIELO PUEDE ESPERAR</span><i></i></span></div><div class="result-stats"><div><strong>${result.objectsPlaced}</strong><span>OBJETOS</span></div><div><strong>${result.perfectDrops}</strong><span>PERFECT DROPS</span></div><div><strong>${result.score}</strong><span>SCORE</span></div></div><div class="result-record"><span>${icon('trophy')} RÉCORD PERSONAL <strong>${meters(this.profile.personalBest)} m</strong></span><span class="result-coins">${icon('coin')} +${result.coins}</span></div><div class="result-actions"><button class="primary-button" type="button" data-action="restart"><span>JUGAR DE NUEVO</span>${icon('arrow')}</button><button class="challenge-button" type="button" data-action="challenge-share">${icon('users')}<span>DESAFIAR A UN AMIGO</span>${icon('arrow')}</button><button class="share-button" type="button" data-action="share">${icon('share')} COMPARTIR RESULTADO</button></div><div class="result-progress" aria-live="polite"></div><div class="result-finalization"></div><div class="reward-actions">${this.rewardAvailable && this.canSecondChance ? `<button class="reward-button" type="button" data-action="second-chance">${icon('bolt')} Segunda oportunidad <span>VER ANUNCIO</span></button>` : ''}${this.rewardAvailable && this.canDoubleCoins && result.coins > 0 ? `<button class="reward-button" type="button" data-action="double-coins">${icon('coin')} Duplicar coins <span>VER ANUNCIO</span></button>` : ''}</div><footer class="result-footer">${result.mode === 'daily' ? `${icon('calendar')} DAILY TOWER · ${this.profile.dailyStreak} DÍA${this.profile.dailyStreak === 1 ? '' : 'S'} DE RACHA` : 'DE UNA CAJA A UN COHETE. VOLVÉ A INTENTAR.'}</footer></section>`;
   }
 
   private handleClick(event: MouseEvent): void {
@@ -303,6 +355,8 @@ export class Interface {
       return;
     }
     if (action === 'play' || action === 'daily' || action === 'challenge') { this.onAction({ type: 'play', mode: action === 'play' ? 'casual' : action === 'daily' ? 'daily' : 'challenge' }); return; }
+    if(action==='language'){this.onAction({type:'language',language:button.dataset.language==='en'?'en':'es'});return;}
+    if(['google','guest','invite','buy-attempt','ad-attempt','finalize'].includes(action??'')){this.onAction({type:action as 'google'|'guest'|'invite'|'buy-attempt'|'ad-attempt'|'finalize'});return;}
     if (action === 'restart' || action === 'menu') { this.closeDialog(); this.onAction({ type: action }); return; }
     if (action === 'pause') { this.paused = true; this.onAction({ type: 'pause', paused: true }); this.openPause(); return; }
     if (action === 'resume') { this.paused = false; this.closeDialog(); this.onAction({ type: 'pause', paused: false }); return; }
@@ -335,7 +389,7 @@ export class Interface {
     }
     if (action === 'save-name') {
       const input = this.dialog?.querySelector<HTMLInputElement>('#public-name');
-      if (input) { this.onAction({ type: 'name', name: input.value.slice(0, 24).trim() }); this.toast('Nombre público guardado'); }
+      if (input && input.value.replace(/[^\p{L}\p{N} _-]/gu,'').trim()) { this.onAction({ type: 'name', name: input.value.slice(0, 24).trim() }); this.toast('Nombre público guardado'); }
     }
   }
 
@@ -345,7 +399,7 @@ export class Interface {
     const dialog = document.createElement('dialog');
     dialog.className = 'ui-dialog';
     dialog.dataset.kind = kind;
-    dialog.innerHTML = `<header class="dialog-header"><div><span class="dialog-eyebrow">IMPOSSIBLE TOWER</span><h2>${escape(title)}</h2></div><button class="icon-button" type="button" data-action="close" aria-label="Cerrar ${escape(title)}">${icon('close')}</button></header><div class="dialog-body">${body}</div>`;
+    dialog.innerHTML = `<header class="dialog-header">${languageControls()}<div><span class="dialog-eyebrow">IMPOSSIBLE TOWER</span><h2>${escape(title)}</h2></div><button class="icon-button" type="button" data-action="close" aria-label="Cerrar ${escape(title)}">${icon('close')}</button></header><div class="dialog-body">${body}</div>`;
     dialog.setAttribute('aria-label', title);
     dialog.addEventListener('cancel', event => {
       if (this.paused && this.screen === 'game') {
@@ -390,7 +444,7 @@ export class Interface {
 
   private openSettings(): void {
     const switches = ([['music', 'Música', 'music'], ['sfx', 'Efectos de sonido', 'sound'], ['haptics', 'Vibración', 'haptic']] as const).map(([setting, label, symbol]) => `<div class="setting-row"><span>${icon(symbol)}${label}</span><button type="button" class="toggle ${this.profile.settings[setting] ? 'is-on' : ''}" role="switch" aria-checked="${this.profile.settings[setting]}" aria-label="${label}" data-action="toggle" data-setting="${setting}"><span class="toggle-state">${this.profile.settings[setting] ? 'ON' : 'OFF'}</span><i></i></button></div>`).join('');
-    this.openDialog('settings', 'A tu manera.', `<p class="dialog-description">Buen timing. Buenas preferencias.</p><div class="settings-list">${switches}</div><div class="name-setting"><label for="public-name">NOMBRE PÚBLICO <span>OPCIONAL</span></label><p>Aparece en tus desafíos${this.backendAvailable ? ' y en el ranking' : ''}.</p><div class="name-input-row"><input id="public-name" type="text" value="${escape(this.profile.publicName)}" maxlength="24" placeholder="¿Cómo te llaman?" autocomplete="nickname"><button type="button" data-action="save-name" aria-label="Guardar nombre">${icon('check')}</button></div></div><p class="fine-print">Tu progreso se guarda en este dispositivo. Las coins solo se usan dentro del juego.</p><div class="dialog-legal"><button type="button" data-action="privacy">Privacidad</button><span>·</span><button type="button" data-action="terms">Términos</button></div>`);
+    this.openDialog('settings', 'A tu manera.', `<p class="dialog-description">Buen timing. Buenas preferencias.</p><div class="settings-list">${switches}</div><div class="name-setting"><label for="public-name">NOMBRE PÚBLICO <span>OBLIGATORIO</span></label><p>Aparece en tus desafíos${this.backendAvailable ? ' y en el ranking mensual' : ''}.</p><div class="name-input-row"><input id="public-name" type="text" value="${escape(this.profile.publicName)}" maxlength="24" placeholder="¿Cómo te llaman?" autocomplete="nickname"><button type="button" data-action="save-name" aria-label="Guardar nombre">${icon('check')}</button></div></div><p class="fine-print">Tu progreso se guarda en este dispositivo. Las coins solo se usan dentro del juego.</p><div class="dialog-legal"><button type="button" data-action="privacy">Privacidad</button><span>·</span><button type="button" data-action="terms">Términos</button></div>`);
   }
 
   private openSkins(): void {
@@ -413,19 +467,19 @@ export class Interface {
 
   private openAchievements(): void {
     const earned = this.profile.achievements.length;
-    this.openDialog('achievements', 'Pequeñas grandes hazañas.', `<div class="achievement-progress"><strong>${earned}<span> / ${ACHIEVEMENTS.length}</span></strong><span>LOGROS DESBLOQUEADOS</span></div><div class="collection-list">${ACHIEVEMENTS.map(achievement => {
+    this.openDialog('achievements', 'Pequeñas grandes hazañas.', `<div class="achievement-progress"><strong>${earned}<span> / ${BADGES.length}</span></strong><span>LOGROS DESBLOQUEADOS</span></div><div class="collection-list">${BADGES.map(achievement => {
       const unlocked = this.profile.achievements.includes(achievement.id);
-      return `<div class="achievement-row ${unlocked ? 'unlocked' : ''}"><span class="achievement-symbol">${icon(unlocked ? 'trophy' : 'lock')}</span><div><strong>${escape(achievement.name)}</strong><p>${escape(achievement.description)}</p></div>${unlocked ? icon('check') : '<span class="achievement-dot"></span>'}</div>`;
+      return `<div class="achievement-row ${unlocked ? 'unlocked' : ''}"><span class="achievement-symbol">${icon(unlocked ? 'trophy' : 'lock')}</span><div><strong>${escape(achievement.name)}</strong><p>${escape(achievement.description)}</p></div>${unlocked ? icon('check') : `<progress max="${achievement.target}" value="${Math.min(achievement.target,this.profile.badgeProgress?.[achievement.id]??0)}"></progress>`}</div>`;
     }).join('')}</div>`);
   }
 
   private openMissions(): void {
-    const active = typeof getActiveMissions === 'function' ? getActiveMissions(this.profile) : MISSIONS.slice(0, 3);
-    this.openDialog('missions', 'Algo por lo que apilar.', `<p class="dialog-description">Tres objetivos. Un montón de posibilidades.<br>Las recompensas se suman al completarlos.</p><div class="mission-list">${active.map(mission => {
-      const state = this.profile.missions[mission.id] || { progress: 0, claimed: false };
+    const active = DAILY_MISSIONS;
+    this.openDialog('missions', 'Algo por lo que apilar.', `<p class="dialog-description">Cada misión verificada paga 2 monedas. Máximo 6 al día para cuentas Google. Los invitados solo guardan progreso.</p><div class="mission-list">${active.map(mission => {
+      const state = this.profile.missionDay===new Date().toISOString().slice(0,10)?this.profile.missions[mission.id]||{progress:0,claimed:false}:{progress:0,claimed:false};
       const progress = Math.min(mission.target, state.progress);
       return `<div class="mission-card"><div class="mission-top"><span class="mission-icon">${icon(state.claimed ? 'check' : 'target')}</span><span class="mission-reward">${icon('coin')} +${mission.reward}</span></div><h3>${escape(mission.name)}</h3><div class="mission-progress"><span style="width:${Math.min(100, Math.max(0, progress / mission.target * 100))}%"></span></div><div class="mission-meta"><span>${progress} / ${mission.target}</span><span>${state.claimed ? 'COMPLETADA' : 'EN PROGRESO'}</span></div></div>`;
-    }).join('')}</div><p class="fine-print">Los objetivos rotan a medida que jugás y completás misiones.</p>`);
+    }).join('')}</div><p class="fine-print">Renuevan a medianoche UTC. Iniciar sesión no acredita misiones anteriores.</p>`);
   }
 
   private openLegal(kind: 'privacy' | 'terms'): void {
@@ -448,7 +502,7 @@ export class Interface {
   }
 
   private updateDesktop(): void {
-    this.desktop.querySelector<HTMLElement>('[data-desktop-best]')!.textContent = meters(this.profile?.personalBest || 0);
+    this.desktop.querySelector<HTMLElement>('[data-desktop-best]')!.textContent = meters(Math.max(this.account?.dailyBest??0,this.account?.legacyDailyBest??0,this.profile?.legacyDailyBest??0,...Object.values(this.profile?.daily??{}).map(day=>day.best)));
   }
 
   private async copyShareLink(input: HTMLTextAreaElement): Promise<void> {

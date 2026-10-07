@@ -1,8 +1,11 @@
 # Impossible Tower
 
+**Entrega V3:** jugabilidad con física compartida, Google, un panel Daily/mensual, moneda del servidor, intentos y referidos. [Contratos, pruebas y activación](docs/V3-LAUNCH.md) es la referencia de esta entrega. Las secciones V1/V2 siguientes documentan compatibilidad histórica; sus recompensas y clasificaciones anteriores no se activan en V3.
+
+
 Un juego arcade de física para jugar con un dedo: soltá objetos desde una grúa y construí la torre más alta posible. La altura es la métrica principal; precisión y combos suman puntos. Los retos compartidos reproducen la misma secuencia de objetos.
 
-El juego conserva el progreso local y funciona sin cuenta. La revisión V2 prepara una cuenta recuperable, saldo separado, ayudas, rankings con premios internos y PayPal USD. Los servicios online requieren activación y verificación; anuncios y cobros permanecen apagados. Las coins no se transfieren, retiran ni convierten a dinero.
+Los invitados pueden practicar con nombre público y competir en el mensual. Google conserva el saldo único del servidor y permite competir en Daily. Los servicios online requieren activación y verificación; anuncios y cobros permanecen apagados. Las monedas no se transfieren, retiran ni convierten a dinero.
 
 ## Stack y arquitectura
 

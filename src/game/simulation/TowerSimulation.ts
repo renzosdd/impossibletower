@@ -1,6 +1,6 @@
 import Matter from 'matter-js';
 import type { AidId, GameSnapshot, ObjectDefinition, RunConfig, RunResult, RunStats } from '../../types';
-import { objectAt, getObject, craneSpeed } from '../../content/objects';
+import { objectForRules, getObject, craneSpeed } from '../../content/objects';
 import { accuracyFor, towerHeight, updateCombo, scoreDrop, calculateScore } from '../../utils/scoring';
 import { advanceStability, isSettled, hasSignificantCollapse } from '../../utils/stability';
 import { createObjectBody } from '../objects/bodies';
@@ -11,6 +11,8 @@ export interface ReplayEvent { tick:number; action:'drop'|'aid'; aid?:AidId; }
 export interface SimulationPiece { body:Matter.Body; def:ObjectDefinition; placed:boolean; index:number; settledY:number; fallen:boolean; }
 export interface SimulationHooks { event?(name:string,data?:Record<string,unknown>):void; over?(result:RunResult):void; }
 const AID_IDS:readonly AidId[]=['guide-5','guide-10','preview','focus','skip','second-chance'];
+type SolverBody=Matter.Body&{sleepCounter:number;deltaTime:number;positionImpulse:Matter.Vector;constraintImpulse:{x:number;y:number;angle:number}};
+function bodyDynamics(body:Matter.Body){const b=body as SolverBody;return {force:{...b.force},torque:b.torque,motion:b.motion,sleepCounter:b.sleepCounter,deltaTime:b.deltaTime,positionImpulse:{...b.positionImpulse},constraintImpulse:{...b.constraintImpulse}};}
 
 export class TowerSimulation {
  readonly engine:Matter.Engine;
@@ -45,20 +47,21 @@ export class TowerSimulation {
  private perfectCombo=0;
  private support?:Matter.Body;
  private touched=false;
- private retrySnapshot:{piece:SimulationPiece;x:number;y:number;angle:number}[]=[];
+ private retrySnapshot:{piece:SimulationPiece;x:number;y:number;angle:number;vx:number;vy:number;av:number;sleeping:boolean;dynamics:ReturnType<typeof bodyDynamics>}[]=[];
+ private retryState?:{stats:RunStats;precision:number;perfectCombo:number;topY:number;peakTopY:number;cameraTarget:number;cameraY:number;phase:number;craneX:number;slowMs:number;sequenceCursor:number;accuracy:GameSnapshot['accuracy']};
  private fixedX?:number;
  private forcedObject?:string;
  private auto=false;
  private pausedState:GameSnapshot['state']='ready';
 
  constructor(config:RunConfig,private hooks:SimulationHooks={}) {
-  this.config={...config,catalog:config.catalog??config.challenge?.catalog??'legacy-18',ruleset:'v2'};
-  this.stats={mode:config.mode,seed:config.seed,catalog:this.config.catalog,height:0,score:0,objectsPlaced:0,perfectDrops:0,combo:0,maxCombo:0,maxPerfectCombo:0,duration:0,objectIds:[],aidsUsed:[]};
+  this.config={...config,catalog:config.catalog??config.challenge?.catalog??'legacy-18',ruleset:config.ruleset??'v2'};
+  this.stats={mode:config.mode,seed:config.seed,catalog:this.config.catalog,ruleset:this.config.ruleset,height:0,score:0,objectsPlaced:0,perfectDrops:0,combo:0,maxCombo:0,maxPerfectCombo:0,duration:0,objectIds:[],aidsUsed:[]};
   this.engine=Matter.Engine.create({enableSleeping:true,positionIterations:8,velocityIterations:8});
   this.engine.gravity.y=1.15;
   this.ground=Matter.Bodies.rectangle(210,666,230,32,{isStatic:true,friction:1,restitution:0,label:'ground'});
   Matter.Composite.add(this.engine.world,this.ground);
-  this.def=objectAt(this.config.seed,0,this.config.catalog);
+  this.def=this.object(0);
   Matter.Events.on(this.engine,'collisionStart',(event:Matter.IEventCollision<Matter.Engine>)=>{
    if(!this.falling||this.touched)return;
    for(const pair of event.pairs) {
@@ -72,15 +75,17 @@ export class TowerSimulation {
    }
   });
  }
+ private object(index:number) {return objectForRules(this.config.seed,index,this.config.catalog!,this.config.ruleset,index-(this.aids.has('skip')?1:0));}
  private nextObject() {
-  this.def=this.forcedObject?getObject(this.forcedObject):objectAt(this.config.seed,this.sequenceCursor,this.config.catalog);
+  this.def=this.forcedObject?getObject(this.forcedObject):this.object(this.sequenceCursor);
   this.forcedObject=undefined;this.state='ready';this.support=undefined;this.touched=false;this.stableMs=0;
  }
  drop():boolean {
   if(this.state!=='ready'||this.pieces.length>=500)return false;
-  this.retrySnapshot=this.pieces.filter(p=>p.placed&&!p.fallen).map(piece=>({piece,x:piece.body.position.x,y:piece.body.position.y,angle:piece.body.angle}));
+  this.retrySnapshot=this.pieces.filter(p=>p.placed&&!p.fallen).map(piece=>({piece,x:piece.body.position.x,y:piece.body.position.y,angle:piece.body.angle,vx:piece.body.velocity.x,vy:piece.body.velocity.y,av:piece.body.angularVelocity,sleeping:piece.body.isSleeping,dynamics:bodyDynamics(piece.body)}));
+  this.retryState={stats:structuredClone(this.stats),precision:this.precision,perfectCombo:this.perfectCombo,topY:this.topY,peakTopY:this.peakTopY,cameraTarget:this.cameraTarget,cameraY:this.cameraY,phase:this.phase,craneX:this.craneX,slowMs:this.slowMs,sequenceCursor:this.sequenceCursor,accuracy:this.latestAccuracy};
   const x=this.fixedX??this.craneX,y=this.cameraY+225;
-  const body=createObjectBody(this.def,x,y);
+  const body=createObjectBody(this.def,x,y,this.config.ruleset);
   Matter.Composite.add(this.engine.world,body);
   const piece:SimulationPiece={body,def:this.def,placed:false,index:this.stats.objectsPlaced,settledY:y,fallen:false};
   this.pieces.push(piece);this.falling=piece;this.state='falling';this.dropElapsed=0;this.fixedX=undefined;this.launches++;
@@ -113,7 +118,7 @@ export class TowerSimulation {
   else if(!paused&&this.state==='paused')this.state=this.pausedState;
  }
  canSecondChance():boolean {
-  return (this.state==='over'||this.state==='paused'&&this.pausedState==='over')&&this.result?.reason==='miss'&&this.stats.objectsPlaced>=3&&!this.aids.has('second-chance')&&this.aids.size<2&&!!this.falling&&!this.falling.placed;
+  return (this.state==='over'||this.state==='paused'&&this.pausedState==='over')&&(this.result?.reason==='miss'||this.config.ruleset==='v3'&&this.result?.reason==='collapse')&&this.stats.objectsPlaced>=3&&!this.aids.has('second-chance')&&this.aids.size<2&&(this.config.ruleset==='v3'?!!this.retryState:!!this.falling&&!this.falling.placed);
  }
  canActivateAid(id:AidId):boolean {
   if(!AID_IDS.includes(id)||this.aids.has(id)||this.aids.size>=2)return false;
@@ -127,17 +132,29 @@ export class TowerSimulation {
   if(!this.canActivateAid(id))return false;
   const wasPaused=this.state==='paused';
   if(id==='second-chance') {
-   const failed=this.falling!;Matter.Composite.remove(this.engine.world,failed.body);this.pieces=this.pieces.filter(p=>p!==failed);
+   if(this.config.ruleset==='v3') {
+    const keep=new Set(this.retrySnapshot.map(s=>s.piece));
+    for(const p of this.pieces)if(!keep.has(p))Matter.Composite.remove(this.engine.world,p.body);
+    this.pieces=this.pieces.filter(p=>keep.has(p));
+   } else {
+    const failed=this.falling!;
+    Matter.Composite.remove(this.engine.world,failed.body);
+    this.pieces=this.pieces.filter(p=>p!==failed);
+   }
    for(const saved of this.retrySnapshot) {
     if(saved.piece.fallen){Matter.Composite.add(this.engine.world,saved.piece.body);saved.piece.fallen=false;}
     Matter.Body.setPosition(saved.piece.body,{x:saved.x,y:saved.y});Matter.Body.setAngle(saved.piece.body,saved.angle);
-    Matter.Body.setVelocity(saved.piece.body,{x:0,y:0});Matter.Body.setAngularVelocity(saved.piece.body,0);Matter.Sleeping.set(saved.piece.body,false);
+    const v3=this.config.ruleset==='v3';
+    Matter.Body.setVelocity(saved.piece.body,{x:v3?saved.vx:0,y:v3?saved.vy:0});Matter.Body.setAngularVelocity(saved.piece.body,v3?saved.av:0);Matter.Sleeping.set(saved.piece.body,v3?saved.sleeping:false);
+    if(v3)Object.assign(saved.piece.body,structuredClone(saved.dynamics));
    }
+   if(this.config.ruleset==='v3')Matter.Pairs.clear(this.engine.pairs);
+   if(this.config.ruleset==='v3'&&this.retryState){const r=this.retryState;this.stats=structuredClone(r.stats);this.precision=r.precision;this.perfectCombo=r.perfectCombo;this.topY=r.topY;this.peakTopY=r.peakTopY;this.cameraTarget=r.cameraTarget;this.cameraY=r.cameraY;this.phase=r.phase;this.craneX=r.craneX;this.slowMs=r.slowMs;this.sequenceCursor=r.sequenceCursor;this.latestAccuracy=r.accuracy;}
    this.result=undefined;this.falling=undefined;this.nextObject();
   }
   if(id==='focus')this.focusUntil=this.launches+3;
   if(id==='preview')this.previewUntil=this.sequenceCursor+3;
-  if(id==='skip'){this.sequenceCursor++;this.nextObject();}
+  if(id==='skip'){this.aids.add(id);this.sequenceCursor++;this.nextObject();}
   this.aids.add(id);this.stats.assisted=true;this.stats.aidsUsed=[...this.aids];
   this.events.push({tick:this.tick,action:'aid',aid:id});
   this.hooks.event?.('aid_used',{aid:id});
@@ -145,7 +162,7 @@ export class TowerSimulation {
   return true;
  }
  get guideActive():boolean {return this.aids.has('guide-10')&&this.launches<10||this.aids.has('guide-5')&&this.launches<5;}
- preview():ObjectDefinition[] {return this.aids.has('preview')?[1,2,3].filter(i=>this.sequenceCursor+i<=this.previewUntil).map(i=>objectAt(this.config.seed,this.sequenceCursor+i,this.config.catalog)):[];}
+ preview():ObjectDefinition[] {return this.aids.has('preview')?[1,2,3].filter(i=>this.sequenceCursor+i<=this.previewUntil).map(i=>this.object(this.sequenceCursor+i)):[];}
  snapshot(fps=60):GameSnapshot {return {...this.stats,objectIds:[...this.stats.objectIds],aidsUsed:[...this.aids],duration:Math.round(this.elapsed/1000),state:this.state,nextObject:this.def.name,accuracy:this.latestAccuracy,fps};}
  private simulation():void {
   for(const p of this.pieces) {
@@ -153,11 +170,12 @@ export class TowerSimulation {
    if(!p.fallen&&p.body.position.y>killY) {
     p.fallen=true;Matter.Composite.remove(this.engine.world,p.body);
     if(p===this.falling&&!p.placed){this.finish('miss');return;}
+    if(this.config.ruleset==='v3'){this.finish('collapse');return;}
    }
   }
   const placed=this.pieces.filter(p=>p.placed&&!p.fallen);
   const currentTop=placed.length?Math.min(...placed.map(p=>p.body.bounds.min.y)):650;
-  if(hasSignificantCollapse(this.pieces.filter(p=>p.placed).map(p=>({placedIndex:p.index,settledY:p.settledY,y:p.body.position.y,speed:p.body.speed,fallen:p.fallen})),this.peakTopY,currentTop)){this.finish('collapse');return;}
+  if(this.config.ruleset!=='v3'&&hasSignificantCollapse(this.pieces.filter(p=>p.placed).map(p=>({placedIndex:p.index,settledY:p.settledY,y:p.body.position.y,speed:p.body.speed,fallen:p.fallen})),this.peakTopY,currentTop)){this.finish('collapse');return;}
   if(!this.falling||this.falling.placed)return;
   this.dropElapsed+=TICK_MS;const p=this.falling;
   const hasSupport=this.touched&&Matter.Query.collides(p.body,[this.ground,...placed.map(v=>v.body)]).length>0;

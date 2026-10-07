@@ -1,13 +1,13 @@
-import { ACHIEVEMENTS } from '../../content/achievements';
+import { ACHIEVEMENTS, BADGES } from '../../content/achievements';
 import { COSMETICS, ACCOUNT_COSMETICS, DEFAULT_COSMETICS } from '../../content/cosmetics';
-import { MISSIONS } from '../../content/missions';
+import { MISSIONS, DAILY_MISSIONS } from '../../content/missions';
 import type { Profile } from '../../types';
 
 /** Keep the key stable; the version inside the payload controls migrations. */
 export const STORAGE_KEY = 'impossible-tower.profile';
 
 const cosmeticById = new Map([...COSMETICS, ...ACCOUNT_COSMETICS].map((cosmetic) => [cosmetic.id, cosmetic]));
-const achievementIds = new Set(ACHIEVEMENTS.map((achievement) => achievement.id));
+const achievementIds = new Set(BADGES.map((achievement) => achievement.id));
 const MAX_NUMBER = 1_000_000_000;
 
 function record(value: unknown): Record<string, unknown> {
@@ -36,6 +36,7 @@ function stringIds(value: unknown): string[] {
 export function defaultProfile(): Profile {
   return {
     version: 2,
+    economyVersion:3, badgeProgress:Object.fromEntries(BADGES.map(b=>[b.id,0])), missionDay:new Date().toISOString().slice(0,10), legacyDailyBest:0,
     personalBest: 0,
     bestScore: 0,
     coins: 0,
@@ -43,7 +44,7 @@ export function defaultProfile(): Profile {
     selectedCosmetics: { ...DEFAULT_COSMETICS },
     settings: { music: false, sfx: true, haptics: true },
     achievements: [],
-    missions: Object.fromEntries(MISSIONS.map((mission) => [mission.id, { progress: 0, claimed: false }])),
+    missions: Object.fromEntries([...MISSIONS,...DAILY_MISSIONS].map((mission) => [mission.id, { progress: 0, claimed: false }])),
     daily: {},
     dailyStreak: 0,
     lastDailyDate: '',
@@ -60,7 +61,10 @@ export function migrateProfile(raw: unknown): Profile {
   const profile = defaultProfile();
   profile.personalBest = positive(source.personalBest ?? source.bestHeight);
   profile.bestScore = positive(source.bestScore, 0, true);
-  profile.coins = positive(source.coins, 0, true);
+  profile.coins = 0; // Premium balance only exists on the server, including migrated profiles.
+  profile.legacyDailyBest=positive(source.legacyDailyBest);
+  profile.badgeProgress=Object.fromEntries(BADGES.map(b=>[b.id,Math.min(b.target,positive(record(source.badgeProgress)[b.id]))]));
+  profile.missionDay=typeof source.missionDay==='string'&&isUTCDate(source.missionDay)?source.missionDay:profile.missionDay;
   profile.sessionCount = positive(source.sessionCount, 0, true);
   profile.runs = positive(source.runs, 0, true);
   profile.tutorialComplete = source.tutorialComplete === true;
@@ -83,9 +87,10 @@ export function migrateProfile(raw: unknown): Profile {
     if (typeof value === 'boolean') profile.settings[key] = value;
   }
   profile.achievements = [...new Set(stringIds(source.achievements).filter((id) => achievementIds.has(id)))];
+  for(const badge of BADGES)if(profile.achievements.includes(badge.id))profile.badgeProgress![badge.id]=badge.target;
 
   const missions = record(source.missions);
-  for (const mission of MISSIONS) {
+  for (const mission of [...MISSIONS,...DAILY_MISSIONS]) {
     const saved = record(missions[mission.id]);
     const claimed = saved.claimed === true;
     profile.missions[mission.id] = {
@@ -102,6 +107,7 @@ export function migrateProfile(raw: unknown): Profile {
       attempts: positive(daily.attempts, 0, true),
     };
   }
+  if(source.economyVersion!==3)profile.legacyDailyBest=Math.max(profile.legacyDailyBest??0,...Object.values(profile.daily).map(d=>d.best));
   profile.lastDailyDate = isUTCDate(source.lastDailyDate) ? source.lastDailyDate : '';
   profile.dailyStreak = profile.lastDailyDate ? positive(source.dailyStreak, 0, true) : 0;
   if (typeof source.publicName === 'string') {

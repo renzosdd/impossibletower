@@ -7,7 +7,7 @@ test('the production manifest and offline shell support a real playable run', as
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/?debug=1');
-  await expect(page.getByRole('button', { name: /^JUGAR$/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Juego libre$/i })).toBeVisible();
   const manifest = await page.evaluate(async () => {
     const href = document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.href;
     if (!href) throw new Error('Manifest missing');
@@ -22,11 +22,13 @@ test('the production manifest and offline shell support a real playable run', as
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('button', { name: /^JUGAR$/i })).toBeVisible();
-  await page.getByRole('button', { name: /^JUGAR$/i }).click();
+  await expect(page.getByRole('button', { name: /^Juego libre$/i })).toBeVisible();
+  await page.getByRole('button', { name: /^Juego libre$/i }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__tower?.snapshot()?.state)).toBe('ready');
   await page.evaluate(() => (window as any).__tower.debug('center'));
   await page.keyboard.press('Space');
   await expect.poll(() => page.evaluate(() => (window as any).__tower?.snapshot()?.objectsPlaced), { timeout: 12_000 }).toBe(1);
   expect(errors).toEqual([]);
 });
+
+ test.beforeEach(async({page})=>{await page.addInitScript(()=>{if(!localStorage.getItem('impossible-tower.profile'))localStorage.setItem('impossible-tower.profile',JSON.stringify({version:2,economyVersion:3,publicName:'Tester'}));});});

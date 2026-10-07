@@ -26,23 +26,39 @@ export class AccountService {
       return body as T;
     } catch (error) { this.lastError = error instanceof Error ? error.message : 'La cuenta no respondió.'; return null; }
   }
+  /** Mutations reuse the same key when a transport response is lost. */
+  private async retry<T>(action:string,payload:Record<string,unknown>):Promise<T|null> {
+    return await this.request<T>(action,payload) ?? await this.request<T>(action,payload);
+  }
+  async google(link=false):Promise<boolean>{
+    if(!this.client||!this.enabled)return false;
+    try{
+      const options={redirectTo:location.origin+location.pathname};
+      const response=link?await this.client.auth.linkIdentity({provider:'google',options}):await this.client.auth.signInWithOAuth({provider:'google',options});
+      this.lastError=response.error?.message;return !response.error;
+    }catch(error){this.lastError=error instanceof Error?error.message:'La cuenta no respondió.';return false;}
+  }
+  async signOut():Promise<boolean>{if(!this.client)return false;try{const {error}=await this.client.auth.signOut();this.lastError=error?.message;return !error;}catch(error){this.lastError=error instanceof Error?error.message:'La cuenta no respondió.';return false;}}
+  buyAttempt(requestId=crypto.randomUUID()){return this.retry<AccountSnapshot>('buy-attempt',{requestId});}
+  captureReferral(code:string){return this.request<{token?:string}>('capture-referral',{code});}
+  claimReferral(token:string){return this.request<AccountSnapshot>('claim-referral',{token});}
   snapshot() { return this.request<AccountSnapshot>('snapshot'); }
   buyAid(id: AidId, requestId = crypto.randomUUID()) { return this.request<AccountSnapshot>('buy-aid', { id, requestId }); }
   buyCosmetic(id: string, requestId = crypto.randomUUID()) { return this.request<AccountSnapshot>('buy-cosmetic', { id, requestId }); }
-  startRun(mode: 'casual' | 'daily', aids: AidId[], requestId = crypto.randomUUID(), publicName = '') { return this.request<RunTicket>('start-run', { mode, aids, requestId, publicName }); }
+  startRun(mode: 'casual' | 'daily', aids: AidId[], requestId = crypto.randomUUID(), publicName = '') { return this.retry<RunTicket>('start-run', { mode, aids, requestId, publicName }); }
   async useAid(runId: string, id: AidId, tick: number, requestId = crypto.randomUUID()) {
     const payload = { runId, id, tick, requestId };
     return await this.request<{ id: AidId; tick: number }>('use-aid', payload) ?? await this.request<{ id: AidId; tick: number }>('use-aid', payload);
   }
-  finishRun(submission: ReplaySubmission) { return this.request<AccountRun>('finish-run', { ...submission }); }
+  finishRun(submission: ReplaySubmission) { return this.retry<AccountRun>('finish-run', { ...submission }); }
   run(runId: string) { return this.request<AccountRun>('run', { runId }); }
   doubleCoins(runId: string, intentId: string) { return this.request<AccountSnapshot>('double-coins', { runId, intentId }); }
-  adIntent(reward: 'coin-bonus' | 'double-coins' | 'second-chance', runId?: string) { return this.request<{ id: string; expiresAt: string }>('ad-intent', { reward, runId, provider: 'google-h5' }); }
-  completeAd(intentId: string, viewed: boolean, evidence = 'browser-callback') { return this.request<AccountSnapshot | RunTicket>('ad-complete', { intentId, viewed, evidence, provider: 'google-h5' }); }
+  adIntent(reward: 'coin-bonus' | 'double-coins' | 'second-chance' | 'daily-attempt', runId?: string) { return this.retry<{ id: string; expiresAt: string }>('ad-intent', { reward, runId, provider: 'google-h5',requestId:crypto.randomUUID() }); }
+  completeAd(intentId: string, viewed: boolean, evidence = 'browser-callback') { return this.retry<AccountSnapshot | RunTicket>('ad-complete', { intentId, viewed, evidence, provider: 'google-h5' }); }
   cancelAd(intentId: string) { return this.request<AccountSnapshot>('ad-cancel', { intentId }); }
   async leaderboard(period: RankingPeriod, periodKey?: string): Promise<RankingSnapshot | null> {
     if (import.meta.env.VITE_SERVER_RANKINGS_ENABLED !== 'true') return null;
-    if (!(import.meta.env.VITE_RANKING_PERIODS??'daily').split(',').map((value:string)=>value.trim()).includes(period)) { this.lastError='Ese ranking todavía no está habilitado.'; return null; }
+    if (!(import.meta.env.VITE_RANKING_PERIODS??'daily,monthly').split(',').map((value:string)=>value.trim()).includes(period)) { this.lastError='Ese ranking todavía no está habilitado.'; return null; }
     return this.request<RankingSnapshot>('leaderboard', { period, periodKey });
   }
   async linkEmail(email: string): Promise<boolean> {

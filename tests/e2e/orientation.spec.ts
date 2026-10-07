@@ -36,7 +36,8 @@ async function metrics(page: Page, session: CDPSession, landscape: boolean, keyb
   });
 }
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page },testInfo) => {
+  test.skip(testInfo.project.name==='chromium-desktop'&&!testInfo.title.includes('desktop landscape'),'Orientation blocking is specific to touch devices.');
   await page.addInitScript(() => {
     Object.defineProperty(screen.orientation, 'lock', { configurable: true, value: () => Promise.reject(new DOMException('Portrait lock unsupported', 'NotSupportedError')) });
   });
@@ -44,7 +45,7 @@ test.beforeEach(async ({ page }) => {
 
 async function start(page: Page): Promise<void> {
   await page.goto('/?debug=1');
-  await page.getByRole('button', { name: /^JUGAR$/i }).click();
+  await page.getByRole('button', { name: /^Juego libre$/i }).click();
   await expect.poll(async () => (await snapshot(page))?.state).toBe('ready');
 }
 
@@ -59,7 +60,7 @@ test('mobile landscape blocks the menu and Escape cannot dismiss the guard', asy
   await metrics(page, session, true);
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Girá tu dispositivo' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^JUGAR$/i })).not.toBeVisible();
+  await expect(page.getByRole('button', { name: /^Juego libre$/i })).not.toBeVisible();
   await expect(page.locator('.desktop-context')).not.toBeVisible();
   await page.screenshot({ path: test.info().outputPath('landscape-guard.png') });
   await page.keyboard.press('Escape');
@@ -67,7 +68,7 @@ test('mobile landscape blocks the menu and Escape cannot dismiss the guard', asy
   await expect(page.locator('#orientation-guard')).toBeVisible();
   await metrics(page, session, false);
   await expect(page.locator('#orientation-guard')).not.toBeVisible();
-  await expect(page.getByRole('button', { name: /^JUGAR$/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Juego libre$/i })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('portrait-menu.png') });
 });
 
@@ -138,47 +139,14 @@ test('desktop landscape preserves the normal presentation', async ({ browser, ba
   const page = await context.newPage();
   await page.goto('/');
   await expect(page.locator('#orientation-guard')).not.toBeVisible();
-  await expect(page.getByRole('button', { name: /^JUGAR$/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Juego libre$/i })).toBeVisible();
   await expect(page.locator('.desktop-context')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await context.close();
 });
 
-test('a simulated reward hides the guard during the ad and restores landscape blocking afterward', async ({ page, context }) => {
-  const session = await context.newCDPSession(page);
-  await metrics(page, session, false);
-  await start(page);
-  await landFirstBox(page);
-  await page.locator('.debug-panel summary').click();
-  await page.getByRole('button', { name: /^Ad success$/ }).click();
-  await page.locator('.debug-panel summary').click();
-  await debug(page, 'end-run');
-  await page.evaluate(() => {
-    const observer = new MutationObserver(() => {
-      if (!document.querySelector('#game-shell')?.hasAttribute('inert')) return;
-      observer.disconnect();
-      Object.defineProperty(screen.orientation, 'type', { configurable: true, value: 'landscape-primary' });
-      screen.orientation.dispatchEvent(new Event('change'));
-      (window as unknown as { observedAd: { guardOpen: boolean; state: string | undefined; blocked: boolean } }).observedAd = {
-        guardOpen: (document.querySelector('#orientation-guard') as HTMLDialogElement).open,
-        state: (window as unknown as { __tower: DebugController }).__tower.snapshot()?.state,
-        blocked: document.body.classList.contains('orientation-blocked'),
-      };
-    });
-    observer.observe(document.querySelector('#game-shell')!, { attributes: true, attributeFilter: ['inert'] });
-  });
-  await page.getByRole('button', { name: /Duplicar coins/i }).click();
-  await expect.poll(() => page.evaluate(() => (window as unknown as { observedAd?: unknown }).observedAd)).toEqual({
-    guardOpen: false,
-    state: 'paused',
-    blocked: true,
-  });
-  await expect(page.locator('#orientation-guard')).toBeVisible();
-  expect((await snapshot(page))?.state).toBe('paused');
-  await page.evaluate(() => {
-    delete (screen.orientation as unknown as { type?: string }).type;
-    screen.orientation.dispatchEvent(new Event('change'));
-  });
-  await expect(page.locator('#orientation-guard')).not.toBeVisible();
-  await expect(page.getByRole('button', { name: /JUGAR DE NUEVO/i })).toBeVisible();
+test('a result keeps restart available after rotation and cannot invoke removed coin ads',async({page,context})=>{
+ const session=await context.newCDPSession(page);await metrics(page,session,false);await start(page);await landFirstBox(page);await debug(page,'end-run');await expect(page.getByRole('button',{name:/Duplicar coins/i})).toHaveCount(0);await metrics(page,session,true);await expect(page.locator('#orientation-guard')).toBeVisible();await metrics(page,session,false);await expect(page.locator('#orientation-guard')).not.toBeVisible();await expect(page.getByRole('button',{name:/JUGAR DE NUEVO/i})).toBeEnabled();
 });
+
+ test.beforeEach(async({page})=>{await page.addInitScript(()=>{if(!localStorage.getItem('impossible-tower.profile'))localStorage.setItem('impossible-tower.profile',JSON.stringify({version:2,economyVersion:3,publicName:'Tester'}));});});

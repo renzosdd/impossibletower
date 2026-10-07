@@ -1,10 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ACHIEVEMENTS } from '../../src/content/achievements';
 import { COSMETICS } from '../../src/content/cosmetics';
-import { getActiveMissions, MISSIONS } from '../../src/content/missions';
+import { getActiveMissions, MISSIONS, DAILY_MISSIONS } from '../../src/content/missions';
 import { defaultProfile } from '../../src/services/storage/profile';
 import { beginSession, buyCosmetic, recordRun, recordShare } from '../../src/services/storage/progress';
 import type { RunStats } from '../../src/types';
+
+it('renews daily mission progress on a new UTC session while preserving badges',()=>{
+ const profile=defaultProfile();profile.missionDay='2000-01-01';profile.achievements=['first-stack'];
+ for(const mission of DAILY_MISSIONS)profile.missions[mission.id]={progress:mission.target,claimed:true};
+ const next=beginSession(profile);
+ expect(next.missionDay).toBe(new Date().toISOString().slice(0,10));expect(next.achievements).toEqual(['first-stack']);
+ for(const mission of DAILY_MISSIONS)expect(next.missions[mission.id]).toEqual({progress:0,claimed:false});
+});
 
 function run(overrides: Partial<RunStats> = {}): RunStats {
   return {
@@ -32,33 +40,33 @@ describe('rotating goals and achievements', () => {
     expect(getActiveMissions(profile)).toEqual([]);
   });
 
-  it('accumulates visible goals, pays each once and preserves the source profile', () => {
+  it('accumulates daily goals locally without minting premium coins', () => {
     let profile = defaultProfile();
     const initial = profile;
-    const first = recordRun(profile, run({ objectsPlaced: 10 }));
+    const first = recordRun(profile, run({ objectsPlaced: 10 }),true);
     expect(initial.runs).toBe(0);
-    expect(initial.missions['fifteen-objects'].progress).toBe(0);
-    expect(first.profile.missions['fifteen-objects'].progress).toBe(10);
-    profile = first.profile;
-    const second = recordRun(profile, run({ objectsPlaced: 5 }));
-    expect(second.completedMissions).toEqual(['fifteen-objects']);
-    expect(second.earnedCoins).toBe(5 * 2 + 2 + 2 + 25);
-    const third = recordRun(second.profile, run({ objectsPlaced: 5 }));
-    expect(third.completedMissions).not.toContain('fifteen-objects');
-    expect(third.profile.missions['fifteen-objects']).toEqual({ progress: 15, claimed: true });
+    expect(first.profile.missions['daily-three-runs'].progress).toBe(1);
+    const second = recordRun(first.profile, run({ objectsPlaced: 5 }),true);
+    expect(second.completedMissions).toEqual([]);
+    const third = recordRun(second.profile, run({ objectsPlaced: 5 }),true);
+    expect(third.completedMissions).toEqual(['daily-three-runs']);
+    expect(third.earnedCoins).toBe(0);
+    expect(third.profile.coins).toBe(0);
+    expect(recordRun(third.profile,run({perfectDrops:0})).completedMissions).toEqual([]);
   });
 
   it('requires real consecutive Perfects rather than a Great combo for Perfect goals', () => {
     const mixed = recordRun(defaultProfile(), run({ maxCombo: 10, maxPerfectCombo: 2 }));
     expect(mixed.newAchievements).not.toContain('perfect-five');
     expect(mixed.profile.missions['three-perfect'].claimed).toBe(false);
-    const perfect = recordRun(mixed.profile, run({ maxPerfectCombo: 10, perfectDrops: 10, objectsPlaced: 10 }));
+    const perfect = recordRun(mixed.profile, run({ maxPerfectCombo: 10, perfectDrops: 10, objectsPlaced: 10 }),true);
     expect(perfect.newAchievements).toEqual(expect.arrayContaining(['perfect-five', 'perfect-ten']));
-    expect(perfect.completedMissions).toContain('three-perfect');
+    expect(perfect.completedMissions).toContain('daily-eight-perfect');
     const again = recordRun(perfect.profile, run({ maxPerfectCombo: 10 }));
     expect(again.newAchievements).not.toContain('perfect-five');
   });
 
+  it('unverified offline runs do not advance missions',()=>{const result=recordRun(defaultProfile(),run({objectsPlaced:10,perfectDrops:8,height:30}));expect(result.completedMissions).toEqual([]);expect(result.profile.missions['daily-three-runs'].progress).toBe(0);expect(result.earnedCoins).toBe(0);});
   it('awards height and object achievements without requiring a backend', () => {
     const result = recordRun(defaultProfile(), run({ height: 200, objectIds: ['rocket'] }));
     expect(result.newAchievements).toEqual(expect.arrayContaining([
@@ -71,15 +79,15 @@ describe('rotating goals and achievements', () => {
     expect(worse.profile.bestScore).toBe(800);
   });
 
-  it('awards the share goal once, after a successful share', () => {
+  it('sharing never grants local or premium coins', () => {
     const original = defaultProfile();
     const first = recordShare(original);
-    expect(first.earnedCoins).toBe(15);
+    expect(first.earnedCoins).toBe(0);
     expect(original.coins).toBe(0);
     const repeated = recordShare(first.profile);
     expect(repeated.earnedCoins).toBe(0);
     expect(repeated.completedMissions).toEqual([]);
-    expect(repeated.profile.coins).toBe(15);
+    expect(repeated.profile.coins).toBe(0);
   });
 });
 
@@ -126,17 +134,14 @@ describe('UTC daily history', () => {
 });
 
 describe('cosmetic purchases', () => {
-  it('buys and equips cosmetics without charging again for owned ones', () => {
-    const profile = defaultProfile();
-    profile.coins = 120;
-    const bought = buyCosmetic(profile, 'crane-coral');
-    expect(bought.ok).toBe(true);
-    expect(bought.profile.coins).toBe(60);
-    expect(bought.profile.selectedCosmetics.crane).toBe('crane-coral');
-    expect(profile.coins).toBe(120);
-    const reequipped = buyCosmetic(bought.profile, 'crane-coral');
-    expect(reequipped.profile.coins).toBe(60);
-    expect(reequipped.profile.unlockedCosmetics.filter((id) => id === 'crane-coral')).toHaveLength(1);
+  it('local coins cannot purchase cosmetics, existing styles can still be equipped', () => {
+    const profile = defaultProfile(); profile.coins=120;
+    expect(buyCosmetic(profile,'crane-coral').ok).toBe(false);
+    profile.unlockedCosmetics.push('crane-coral');
+    const equipped=buyCosmetic(profile,'crane-coral');
+    expect(equipped.ok).toBe(true);
+    expect(equipped.profile.selectedCosmetics.crane).toBe('crane-coral');
+    expect(equipped.profile.coins).toBe(0);
   });
 
   it('handles insufficient funds and unknown styles without modifying the source', () => {

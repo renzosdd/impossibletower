@@ -1,6 +1,6 @@
-import { ACHIEVEMENTS } from '../../content/achievements';
+import { ACHIEVEMENTS, BADGES } from '../../content/achievements';
 import { COSMETICS } from '../../content/cosmetics';
-import { getActiveMissions, MISSIONS } from '../../content/missions';
+import { getActiveMissions, MISSIONS, DAILY_MISSIONS } from '../../content/missions';
 import type { Profile, ProgressUpdate, RunStats } from '../../types';
 import { isUTCDate, migrateProfile } from './profile';
 
@@ -14,12 +14,14 @@ function finite(value: number): number {
 /** Called once per page session, regardless of the number of attempts. */
 export function beginSession(profile: Profile): Profile {
   const next = migrateProfile(profile);
+  const day=new Date().toISOString().slice(0,10);
+  if(next.missionDay!==day){next.missionDay=day;for(const m of DAILY_MISSIONS)next.missions[m.id]={progress:0,claimed:false};}
   next.sessionCount += 1;
   return next;
 }
 
 /** The caller owns run finalization: a rewarded continuation must finalize only once. */
-export function recordRun(profile: Profile, result: RunStats): ProgressUpdate {
+export function recordRun(profile: Profile, result: RunStats, verified=false): ProgressUpdate {
   const next = migrateProfile(profile);
   const height = finite(result.height);
   const objects = Math.floor(finite(result.objectsPlaced));
@@ -27,7 +29,7 @@ export function recordRun(profile: Profile, result: RunStats): ProgressUpdate {
   const newBest = height > next.personalBest;
   const completedMissions: string[] = [];
   const newAchievements: string[] = [];
-  let earnedCoins = Math.min(120, objects * 2 + Math.floor(height / 5) + perfect) + (newBest ? 10 : 0);
+  let earnedCoins = 0;
 
   const metrics: Record<string, number> = {
     height,
@@ -42,8 +44,11 @@ export function recordRun(profile: Profile, result: RunStats): ProgressUpdate {
     challengeWon: result.mode === 'challenge' && (result as RunStats & { challengeWon?: boolean }).challengeWon === true ? 1 : 0,
   };
 
-  // Only the three visible goals advance. Cumulative goals survive rotations.
-  for (const mission of getActiveMissions(next)) {
+  // Only verified runs advance daily missions. Offline badges and history remain local.
+  const day=new Date().toISOString().slice(0,10);
+  if(next.missionDay!==day){next.missionDay=day;for(const m of DAILY_MISSIONS)next.missions[m.id]={progress:0,claimed:false};}
+  metrics.qualifyingRuns=objects>=5?1:0;
+  for (const mission of verified?DAILY_MISSIONS:[]) {
     const state = next.missions[mission.id];
     const amount = metrics[mission.metric] ?? 0;
     const progress = mission.metric === 'height' || mission.metric === 'maxCombo' || mission.metric === 'maxPerfectCombo'
@@ -52,13 +57,13 @@ export function recordRun(profile: Profile, result: RunStats): ProgressUpdate {
     state.progress = Math.min(mission.target, progress);
     if (state.progress >= mission.target && !state.claimed) {
       state.claimed = true;
-      earnedCoins += mission.reward;
+      // Guests see progress without premium credit.
       completedMissions.push(mission.id);
     }
   }
 
   if (result.mode === 'daily') {
-    const seedDay = /^tower:daily:(\d{4}-\d{2}-\d{2}):v1$/.exec(result.seed)?.[1];
+    const seedDay = /^tower:daily:(\d{4}-\d{2}-\d{2}):v[123](?::[a-z0-9-]+)?$/.exec(result.seed)?.[1];
     // A run started before midnight still belongs to the sequence it played.
     const day = isUTCDate(seedDay) ? seedDay : new Date().toISOString().slice(0, 10);
     const daily = next.daily[day] ?? { best: 0, attempts: 0 };
@@ -71,8 +76,10 @@ export function recordRun(profile: Profile, result: RunStats): ProgressUpdate {
   }
   metrics.dailyStreak = next.dailyStreak;
 
-  for (const achievement of ACHIEVEMENTS) {
-    if (!next.achievements.includes(achievement.id) && (metrics[achievement.metric] ?? 0) >= achievement.target) {
+  for (const achievement of BADGES) {
+    next.badgeProgress??={};
+    next.badgeProgress[achievement.id]=Math.min(achievement.target,Math.max(next.badgeProgress[achievement.id]??0,metrics[achievement.metric]??0));
+    if (!next.achievements.includes(achievement.id) && next.badgeProgress[achievement.id] >= achievement.target) {
       next.achievements.push(achievement.id);
       newAchievements.push(achievement.id);
     }
@@ -82,7 +89,7 @@ export function recordRun(profile: Profile, result: RunStats): ProgressUpdate {
   next.bestScore = Math.max(next.bestScore, Math.floor(finite(result.score)));
   next.runs += 1;
   next.tutorialComplete ||= objects > 0;
-  next.coins = Math.min(MAX_COINS, next.coins + earnedCoins);
+  next.coins = 0;
 
   // Height milestones offer cosmetic gifts; they never change physical properties.
   if (newBest) {
@@ -93,15 +100,12 @@ export function recordRun(profile: Profile, result: RunStats): ProgressUpdate {
 }
 
 /** Call after the share sheet succeeds or a challenge link was copied successfully. */
-export function recordShare(profile: Profile): ProgressUpdate {
-  const next = migrateProfile(profile);
-  const mission = MISSIONS.find((entry) => entry.metric === 'share')!;
-  const state = next.missions[mission.id];
-  if (state.claimed) return { profile: next, earnedCoins: 0, newAchievements: [], completedMissions: [] };
-  state.progress = mission.target;
-  state.claimed = true;
-  next.coins = Math.min(MAX_COINS, next.coins + mission.reward);
-  return { profile: next, earnedCoins: mission.reward, newAchievements: [], completedMissions: [mission.id] };
+export function recordShare(profile:Profile):ProgressUpdate {return {profile:migrateProfile(profile),earnedCoins:0,newAchievements:[],completedMissions:[]};}
+
+export function nearBadges(profile:Profile) {
+ return BADGES.map(b=>({...b,progress:profile.badgeProgress?.[b.id]??0}))
+ .filter(b=>!profile.achievements.includes(b.id)&&b.progress/b.target>.9&&b.progress<b.target)
+ .sort((a,b)=>b.progress/b.target-a.progress/a.target).slice(0,3);
 }
 
 /** Buying an owned cosmetic equips it without paying again. */

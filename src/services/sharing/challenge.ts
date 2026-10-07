@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { Challenge, RunResult } from '../../types';
 
 const MAX_TOKEN_LENGTH = 2048;
@@ -15,14 +16,14 @@ function publicName(value: unknown): string | undefined {
 function validateChallenge(value: unknown): Challenge | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
-  if ((candidate.version !== 1 && candidate.version !== 2) || typeof candidate.seed !== 'string') return null;
-  if (candidate.version === 2 && !['legacy-18', 'extended-24', 'extended-30'].includes(String(candidate.catalog))) return null;
+  if ((candidate.version !== 1 && candidate.version !== 2 && candidate.version !== 3) || typeof candidate.seed !== 'string') return null;
+  if (candidate.version !== 1 && !['legacy-18', 'extended-24', 'extended-30'].includes(String(candidate.catalog))) return null;
   if (!candidate.seed.length || candidate.seed.length > MAX_SEED_LENGTH || /[\u0000-\u001f\u007f]/.test(candidate.seed)) return null;
   if (typeof candidate.height !== 'number' || !Number.isFinite(candidate.height) || candidate.height < 0 || candidate.height > MAX_HEIGHT) return null;
   if (typeof candidate.score !== 'number' || !Number.isSafeInteger(candidate.score) || candidate.score < 0 || candidate.score > MAX_SCORE) return null;
   if (candidate.name !== undefined && (typeof candidate.name !== 'string' || candidate.name.length > 256)) return null;
   const name = publicName(candidate.name);
-  return { version: candidate.version as 1 | 2, seed: candidate.seed, height: candidate.height, score: candidate.score, ...(candidate.version === 2 ? { catalog: candidate.catalog as Challenge['catalog'] } : {}), ...(name ? { name } : {}) };
+  return { version: candidate.version as 1 | 2 | 3, seed: candidate.seed, height: candidate.height, score: candidate.score, ...(candidate.version !== 1 ? { catalog: candidate.catalog as Challenge['catalog'] } : {}), ...(name ? { name } : {}) };
 }
 
 /** Portable UTF-8 base64url. It carries a seed and a target, not trusted ranking data. */
@@ -93,7 +94,7 @@ export async function createShareCard(result: RunResult, name?: string): Promise
     context.fillText('TOWER', 86, 278);
     context.font = '700 29px Arial, sans-serif';
     context.fillStyle = '#6d6386';
-    context.fillText('UN TOQUE. UNA TORRE. TU RÉCORD.', 91, 340);
+    context.fillText(t('UN TOQUE. UNA TORRE. TU RÉCORD.'), 91, 340);
     context.textAlign = 'center';
     context.fillStyle = '#252440';
     const heightText = `${result.height.toFixed(1)}`;
@@ -101,7 +102,7 @@ export async function createShareCard(result: RunResult, name?: string): Promise
     context.fillText(heightText, 540, 637);
     context.font = '800 45px Arial, sans-serif';
     context.fillStyle = '#7960c8';
-    context.fillText('METROS DE LOCURA', 540, 710);
+    context.fillText(t('METROS DE LOCURA'), 540, 710);
     // The stylized blocks are artwork; the exact placed-object count is printed below.
     const blocks = Math.max(1, Math.min(9, result.objectsPlaced));
     const colors = ['#7960c8', '#f5c74b', '#e99194', '#67b9a1', '#749fdd'];
@@ -124,14 +125,14 @@ export async function createShareCard(result: RunResult, name?: string): Promise
     context.fillText(`${result.perfectDrops} PERFECT DROPS`, 540, 1534);
     context.font = '500 30px Arial, sans-serif';
     context.fillStyle = '#6d6386';
-    context.fillText(`${result.objectsPlaced} objetos · ${Math.round(result.score)} puntos`, 540, 1585);
+    context.fillText(t(`${result.objectsPlaced} objetos · ${Math.round(result.score)} puntos`), 540, 1585);
     roundedRect(context, 85, 1660, 910, 131, 35, '#252440');
     context.font = '900 62px Arial, sans-serif';
     context.fillStyle = '#f7f2e9';
-    context.fillText('¿ME SUPERÁS?', 540, 1746);
+    context.fillText(t('¿ME SUPERÁS?'), 540, 1746);
     context.font = '600 28px Arial, sans-serif';
     context.fillStyle = '#6d6386';
-    context.fillText(publicName(name) ? `DESAFÍO DE ${publicName(name)?.toLocaleUpperCase()}` : 'MISMO SEED. TU MEJOR TORRE.', 540, 1840);
+    context.fillText(publicName(name) ? `${t('DESAFÍO DE')} ${publicName(name)?.toLocaleUpperCase()}` : t('MISMO SEED. TU MEJOR TORRE.'), 540, 1840);
     return await new Promise<Blob | null>(resolve => {
       const timeout = setTimeout(() => resolve(null), 2500);
       canvas.toBlob(blob => { clearTimeout(timeout); resolve(blob); }, 'image/png');
@@ -142,9 +143,9 @@ export async function createShareCard(result: RunResult, name?: string): Promise
 }
 
 export async function shareResult(result: RunResult, name?: string, image = false): Promise<{ method: 'share' | 'copy' | 'manual'; url: string }> {
-  const challenge: Challenge = { version: result.catalog && result.catalog !== 'legacy-18' ? 2 : 1, seed: result.seed, height: result.height, score: result.score, ...(result.catalog && result.catalog !== 'legacy-18' ? { catalog: result.catalog } : {}), ...(publicName(name) ? { name: publicName(name) } : {}) };
+  const challenge: Challenge = { version: result.ruleset === 'v3' ? 3 : result.catalog && result.catalog !== 'legacy-18' ? 2 : 1, seed: result.seed, height: result.height, score: result.score, ...(result.ruleset==='v3'||result.catalog&&result.catalog!=='legacy-18'?{catalog:result.catalog??'extended-30'}:{}), ...(publicName(name) ? { name: publicName(name) } : {}) };
   const url = challengeUrl(challenge);
-  const text = `Llegué a ${result.height.toFixed(1)} m en Impossible Tower. ¿Me superás?`;
+  const text = t(`Llegué a ${result.height.toFixed(1)} m en Impossible Tower. ¿Me superás?`);
   if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
     try {
       const data: ShareData = { title: 'Impossible Tower', text, url };

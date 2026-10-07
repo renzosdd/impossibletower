@@ -21,7 +21,7 @@ test('sharing a result renders an actual 1080×1920 PNG file with its challenge 
     });
   });
   await page.goto('/?debug=1');
-  await page.getByRole('button', { name: /^JUGAR$/i }).click();
+  await page.getByRole('button', { name: /^Juego libre$/i }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__tower?.snapshot()?.state)).toBe('ready');
   await page.evaluate(() => (window as any).__tower.debug('center'));
   await page.keyboard.press('Space');
@@ -41,3 +41,5 @@ test('sharing a result renders an actual 1080×1920 PNG file with its challenge 
   expect(challenge?.score).toBe(run.score);
   expect(errors).toEqual([]);
 });
+
+ test.beforeEach(async({page})=>{await page.addInitScript(()=>{if(!localStorage.getItem('impossible-tower.profile'))localStorage.setItem('impossible-tower.profile',JSON.stringify({version:2,economyVersion:3,publicName:'Tester'}));});});

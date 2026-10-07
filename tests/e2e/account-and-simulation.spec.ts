@@ -40,7 +40,7 @@ async function threeRealPlacements(page: Page): Promise<void> {
     await dropAt(page);
     await expect.poll(async () => (await snapshot(page)).objectsPlaced, { timeout: 12_000 }).toBe(placed);
   }
-  expect((await snapshot(page)).objectIds).toEqual(['box', 'box', 'table']);
+  if((await snapshot(page)).ruleset==='v2')expect((await snapshot(page)).objectIds).toEqual(['box','box','table']);else expect((await snapshot(page)).objectsPlaced).toBe(3);
 }
 
 async function naturalMiss(page: Page): Promise<void> {
@@ -59,8 +59,9 @@ async function mockAccount(page: Page, inventory: Partial<Record<AidId, number>>
   const used = new Set<AidId>();
   await page.addInitScript(({ age }) => {
     localStorage.setItem('impossible-tower.privacy.v1', JSON.stringify({ version: 1, ageGroup: age, guardianAuthorized: false, adsConsent: 'denied', updatedAt: new Date().toISOString() }));
+    localStorage.setItem('impossible-tower.profile',JSON.stringify({version:2,economyVersion:3,publicName:'Tester'}));localStorage.setItem('impossible-tower.owner','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     const expires = Math.floor(Date.now() / 1000) + 3600;
-    const user = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'parent@example.com', email_confirmed_at: new Date().toISOString(), is_anonymous: false, app_metadata: { provider: 'email', providers: ['email'] }, user_metadata: {} };
+    const user = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'parent@example.com', email_confirmed_at: new Date().toISOString(), is_anonymous: false, app_metadata: { provider: 'google', providers: ['google'] }, user_metadata: {} };
     const token = `${btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${btoa(JSON.stringify({ sub: user.id, exp: expires, role: 'authenticated', aud: 'authenticated' }))}.mock-signature`;
     localStorage.setItem('sb-tower-test-auth-token', JSON.stringify({ access_token: token, refresh_token: 'mock-refresh-token', expires_at: expires, expires_in: 3600, token_type: 'bearer', user }));
   }, { age });
@@ -83,11 +84,12 @@ async function mockAccount(page: Page, inventory: Partial<Record<AidId, number>>
       used.clear();
       const id = `bbbbbbbb-bbbb-4bbb-8bbb-${String(++runsStarted).padStart(12, '0')}`;
       receiptCompleted = false;
-      ticket = { id, mode: body.mode as 'casual' | 'daily', seed, catalog: 'extended-30', ruleset: 'v2', startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString(), aids: ids };
+      ticket = { id, mode: body.mode as 'casual' | 'daily', seed, catalog: 'extended-30', ruleset: 'v3', startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString(), aids: ids };
       response = ticket;
     }
     if (body.action === 'use-aid') {
       const id = body.id as AidId;
+      if(id==='second-chance'&&!ticket?.aids.includes(id)){expect(ticket!.aids.length).toBeLessThan(2);if(!(state.inventory[id]??0)){expect(state.balance).toBeGreaterThanOrEqual(90);state.balance-=90;state.inventory[id]=1;}ticket!.aids.push(id);}
       expect(ticket?.aids).toContain(id);
       expect(used.has(id)).toBe(false);
       expect(state.inventory[id]).toBeGreaterThan(0);
@@ -97,7 +99,7 @@ async function mockAccount(page: Page, inventory: Partial<Record<AidId, number>>
     }
     if (body.action === 'finish-run') {
       submission = body as unknown as ReplaySubmission;
-      accepted = replayRun({ mode: ticket!.mode, seed, catalog: ticket!.catalog, ruleset: 'v2' }, submission.events, submission.finalTick);
+      accepted = replayRun({ mode: ticket!.mode, seed, catalog: ticket!.catalog, ruleset: 'v3' }, submission.events, submission.finalTick);
       response = { id: ticket!.id, status: 'accepted', result: { ...accepted, earnedCoins: 0 } };
       if (finishDelay) await new Promise(resolve => setTimeout(resolve, finishDelay));
       receiptCompleted = true;
@@ -126,32 +128,12 @@ test('privacy setup requires a responsible adult for teen online features', asyn
   await page.locator('[data-account-guardian]').check();
   await expect(page.locator('[data-account-action="privacy-continue"]')).toBeEnabled();
   await page.locator('[data-account-action="close"]').click();
-  await expect(page.getByRole('button', { name: /^JUGAR$/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Juego libre$/i })).toBeVisible();
 });
 
-test('ranking periods unlock by stage and a modified disabled tab cannot request an inactive period', async ({ page }) => {
-  await page.goto('/?inspect=1');
-  await page.evaluate(async () => {
-    const { AccountInterface } = await import('/src/ui/AccountInterface.ts');
-    const root = document.createElement('div'); root.id = 'period-test-ui'; document.body.append(root);
-    const events: unknown[] = [];
-    const ui = new AccountInterface(root, { onAction: action => events.push(action) });
-    ui.setEnabledFlags({ rankings: true }); ui.showLeaderboard(null, 'daily');
-    (window as unknown as { periodHarness: unknown }).periodHarness = { ui, events };
-  });
-  const tabs = page.locator('#period-test-ui .account-tabs');
-  await expect(tabs.locator('[data-period="daily"]')).toBeEnabled();
-  await expect(tabs.locator('[data-period="weekly"]')).toBeDisabled();
-  await expect(tabs.locator('[data-period="monthly"]')).toBeDisabled();
-  await tabs.locator('[data-period="weekly"]').evaluate(button => { (button as HTMLButtonElement).disabled = false; (button as HTMLButtonElement).click(); });
-  expect(await page.evaluate(() => (window as unknown as { periodHarness: { events: unknown[] } }).periodHarness.events)).toEqual([]);
-  await page.evaluate(() => (window as unknown as { periodHarness: { ui: { setEnabledFlags(flags: unknown): void } } }).periodHarness.ui.setEnabledFlags({ rankingPeriods: ['daily', 'weekly'] }));
-  await expect(tabs.locator('[data-period="weekly"]')).toBeEnabled();
-  await expect(tabs.locator('[data-period="monthly"]')).toBeDisabled();
-  await tabs.locator('[data-period="weekly"]').click();
-  expect(await page.evaluate(() => (window as unknown as { periodHarness: { events: unknown[] } }).periodHarness.events)).toEqual([{ type: 'rankings', period: 'weekly' }]);
-  await page.evaluate(() => (window as unknown as { periodHarness: { ui: { setEnabledFlags(flags: unknown): void } } }).periodHarness.ui.setEnabledFlags({ rankingPeriods: ['daily', 'weekly', 'monthly'] }));
-  await expect(tabs.locator('[data-period="monthly"]')).toBeEnabled();
+test('one ranking panel offers Daily and monthly with no weekly tab',async({page})=>{
+ await page.goto('/?inspect=1');await page.evaluate(async()=>{const {AccountInterface}=await import('/src/ui/AccountInterface.ts');const root=document.createElement('div');root.id='period-test-ui';document.body.append(root);const events:unknown[]=[];const ui=new AccountInterface(root,{onAction:action=>events.push(action)});ui.setEnabledFlags({rankings:true,rankingPeriods:['daily','monthly']});ui.showLeaderboard(null,'daily');(window as any).periodHarness={ui,events};});
+ const tabs=page.locator('#period-test-ui .account-tabs');await expect(tabs.locator('[data-period="daily"]')).toBeEnabled();await expect(tabs.locator('[data-period="monthly"]')).toBeEnabled();await expect(tabs.locator('[data-period="weekly"]')).toHaveCount(0);await tabs.locator('[data-period="monthly"]').click();expect(await page.evaluate(()=>(window as any).periodHarness.events)).toEqual([{type:'rankings',period:'monthly'}]);
 });
 
 for (const fps of [30, 60, 120]) test(`browser physics at ${fps} requested frames/s matches the canonical Node replay and shares a v2 challenge`, async ({ page }) => {
@@ -209,7 +191,7 @@ test.describe('account API mocks with public client build flags enabled', () => 
     await expect(page.locator('[data-account-action="select-aid"][data-aid="focus"]')).toBeDisabled();
     await expect(page.locator('[data-account-action="buy-coins"]:enabled')).toHaveCount(0);
     await page.locator('[data-account-action="close"]').click();
-    await page.getByRole('button', { name: /^JUGAR$/i }).click();
+    await page.getByRole('button', { name: /^Juego libre$/i }).click();
     await expect.poll(async () => (await snapshot(page)).aidsUsed).toEqual(['guide-5', 'preview']);
     expect(model.ticket?.aids).toEqual(['guide-5', 'preview']);
     expect(model.state.inventory['guide-5']).toBe(0);
@@ -233,7 +215,7 @@ test.describe('account API mocks with public client build flags enabled', () => 
     await page.locator('[data-account-action="select-aid"][data-aid="focus"]').click();
     await page.locator('[data-account-action="select-aid"][data-aid="preview"]').click();
     await page.locator('[data-account-action="close"]').click();
-    await page.getByRole('button', { name: /^JUGAR$/i }).click();
+    await page.getByRole('button', { name: /^Juego libre$/i }).click();
     await expect.poll(async () => (await snapshot(page)).aidsUsed).toEqual(['focus', 'preview']);
     await expect.poll(() => page.evaluate(() => (window as unknown as { __tower: Inspector }).__tower.timing().tick)).toBeGreaterThan(90);
     const observed = await page.evaluate(() => {
@@ -262,7 +244,7 @@ test.describe('account API mocks with public client build flags enabled', () => 
     await page.locator('[data-account-action="select-aid"][data-aid="guide-5"]').click();
     await page.locator('[data-account-action="select-aid"][data-aid="second-chance"]').click();
     await page.locator('[data-account-action="close"]').click();
-    await page.getByRole('button', { name: /^JUGAR$/i }).click();
+    await page.getByRole('button', { name: /^Juego libre$/i }).click();
     await expect.poll(async () => (await snapshot(page)).aidsUsed).toEqual(['guide-5']);
     await page.locator('canvas').screenshot({ path: testInfo.outputPath('guide.png') });
     await threeRealPlacements(page);
@@ -296,6 +278,26 @@ test.describe('account API mocks with public client build flags enabled', () => 
     expect(model.calls.filter(call => call.action === 'finish-run')).toHaveLength(1);
   });
 
+  test('a second chance can be bought directly at the result without preparation',async({page})=>{
+    test.setTimeout(80_000);
+    const model=await mockAccount(page,{});
+    await page.goto('/?inspect=1');
+    await page.getByRole('button',{name:/^Juego libre$/i}).click();
+    await threeRealPlacements(page);await naturalMiss(page);
+    expect(model.ticket!.aids).toEqual([]);
+    expect(model.calls.filter(c=>c.action==='finish-run')).toHaveLength(0);
+    await expect(page.locator('.account-revive-result')).toHaveText('Segunda chance · 90 monedas');
+    await page.locator('.account-revive-result').click();
+    await expect.poll(async()=>(await snapshot(page)).state).toBe('ready');
+    expect(model.state.balance).toBe(10);
+    expect(model.state.inventory['second-chance']).toBe(0);
+    expect(model.ticket!.aids).toEqual(['second-chance']);
+    await naturalMiss(page);
+    await expect.poll(()=>model.calls.filter(c=>c.action==='finish-run').length).toBe(1);
+    await expect(page.locator('.account-revive-result')).toHaveCount(0);
+    expect(model.accepted?.aidsUsed).toEqual(['second-chance']);
+  });
+
   test('ranking tabs request real rows and render participant text safely without announcing premature prizes', async ({ page }) => {
     const model = await mockAccount(page, {});
     await page.goto('/?inspect=1');
@@ -303,11 +305,9 @@ test.describe('account API mocks with public client build flags enabled', () => 
     await expect(page.locator('.account-ranking-list')).toContainText('Participante real <b>');
     await expect(page.locator('.account-ranking-list b')).toHaveCount(0);
     await expect(page.locator('.account-rank-prize')).toHaveText('—');
-    await page.locator('.account-tabs [data-period="weekly"]').click();
-    await expect.poll(() => model.calls.filter(call => call.action === 'leaderboard').map(call => call.period)).toEqual(['daily', 'weekly']);
-    await expect(page.locator('.account-ranking-list')).toContainText('10 puntos');
+    await expect(page.locator('.account-tabs [data-period="weekly"]')).toHaveCount(0);
     await page.locator('.account-tabs [data-period="monthly"]').click();
-    await expect.poll(() => model.calls.filter(call => call.action === 'leaderboard').map(call => call.period)).toEqual(['daily', 'weekly', 'monthly']);
+    await expect.poll(() => model.calls.filter(call => call.action === 'leaderboard').map(call => call.period)).toEqual(['daily','monthly']);
   });
 
   test('a prepared replacement remains available after revival refreshes the consumed inventory', async ({ page }) => {
@@ -319,7 +319,7 @@ test.describe('account API mocks with public client build flags enabled', () => 
     await page.locator('[data-account-action="select-aid"][data-aid="skip"]').click();
     await page.locator('[data-account-action="select-aid"][data-aid="second-chance"]').click();
     await page.locator('[data-account-action="close"]').click();
-    await page.getByRole('button', { name: /^JUGAR$/i }).click();
+    await page.getByRole('button', { name: /^Juego libre$/i }).click();
     await expect.poll(async () => (await snapshot(page)).state).toBe('ready');
     await threeRealPlacements(page);
     await naturalMiss(page);
@@ -339,3 +339,5 @@ test.describe('account API mocks with public client build flags enabled', () => 
     expect(await page.evaluate(() => (window as unknown as { __tower: Inspector }).__tower.replay().tainted)).toBe(false);
   });
 });
+
+ test.beforeEach(async({page})=>{await page.addInitScript(()=>{if(!localStorage.getItem('impossible-tower.profile'))localStorage.setItem('impossible-tower.profile',JSON.stringify({version:2,economyVersion:3,publicName:'Tester'}));});});

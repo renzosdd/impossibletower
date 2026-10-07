@@ -14,7 +14,7 @@ export const COIN_PACKS = {
 } as const;
 export type PackId = keyof typeof COIN_PACKS;
 export type RankingPeriod = 'daily' | 'weekly' | 'monthly';
-export const ECONOMY_LIMITS = { starter: 100, gameplayDaily: 300, missionsDaily: 25, adDaily: 75, adBonus: 25, adCount: 3, activeTicks: 144000, wallMinutes: 60, settlementMinutes: 75 } as const;
+export const ECONOMY_LIMITS = { version:3, starter:60, gameplayDaily:0, missionsDaily:6, adDaily:0, adBonus:0, adCount:2, freeAttempts:3, attemptPrice:30, referralReward:5, referralDaily:10, referralDays:7, prizeMinimum:20, activeTicks:144000, wallMinutes:60, settlementMinutes:75 } as const;
 
 export function validLoadout(ids: unknown): ids is AidId[] {
   return Array.isArray(ids) && ids.length <= 2 && new Set(ids).size === ids.length
@@ -22,22 +22,14 @@ export function validLoadout(ids: unknown): ids is AidId[] {
     && !(ids.includes('guide-5') && ids.includes('guide-10'));
 }
 
-export function prizeSlots(participants: number): number {
-  return participants < 5 ? 0 : participants < 10 ? 1 : participants < 25 ? 3 : participants < 100 ? 10 : 25;
+export function prizeSlots(participants:number):number {return participants<20?0:Math.min(25,participants);}
+export function dailyPoints(rank:number,participants:number):number {
+ if(!Number.isInteger(rank)||!Number.isInteger(participants)||rank<1||rank>participants)return 0;
+ return participants===1?10:Math.round(10+90*(participants-rank)/(participants-1));
+}
+export function rankingPrize(period:RankingPeriod,rank:number,participants:number):{coins:number;items:Partial<Record<AidId,number>>} {
+ return {coins:period!=='daily'||rank<1||rank>prizeSlots(participants)?0:rank===1?30:rank===2?20:rank===3?10:rank<=10?5:2,items:{}};
 }
 
-export function dailyPoints(rank: number, participants: number): number {
-  if (!Number.isInteger(rank) || !Number.isInteger(participants) || rank < 1 || rank > participants) return 0;
-  return participants === 1 ? 10 : Math.round(10 + 90 * (participants - rank) / (participants - 1));
-}
-
-export function rankingPrize(period: RankingPeriod, rank: number, participants: number): { coins: number; items: Partial<Record<AidId, number>> } {
-  if (rank < 1 || rank > prizeSlots(participants)) return { coins: 0, items: {} };
-  const amounts = { daily: [60, 40, 25, 10, 5], weekly: [200, 140, 100, 40, 15], monthly: [600, 400, 250, 100, 35] };
-  const coins = amounts[period][rank <= 3 ? rank - 1 : rank <= 10 ? 3 : 4];
-  let items: Partial<Record<AidId, number>> = {};
-  if (period === 'daily') items = rank === 1 ? { 'guide-5': 1 } : rank === 2 ? { preview: 1 } : {};
-  if (period === 'weekly') items = rank === 1 ? { 'guide-10': 1, focus: 1 } : rank === 2 ? { 'guide-10': 1 } : rank === 3 ? { 'guide-5': 1 } : rank <= 10 ? { preview: 1 } : {};
-  if (period === 'monthly') items = rank === 1 ? { 'guide-10': 3, focus: 2 } : rank === 2 ? { 'guide-10': 2, focus: 1 } : rank === 3 ? { 'guide-10': 1 } : rank <= 10 ? { 'guide-5': 1 } : {};
-  return { coins, items };
-}
+/** Enable only in a separately reviewed payment release. Environment flags cannot enable charges. */
+export const PAYMENTS_RELEASE_ENABLED = false;

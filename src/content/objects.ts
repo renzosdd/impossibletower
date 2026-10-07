@@ -90,3 +90,17 @@ export function craneSpeed(index: number): number {
   const turn = Number.isFinite(index) ? Math.max(0, Math.floor(index)) : 0;
   return Math.min(208, 92 + turn * 3.2);
 }
+
+/** Frozen v3 properties: progression changes the roster, never placed bodies. */
+export function objectForRules(seed:string,index:number,catalog:ObjectCatalog,ruleset:'v2'|'v3'='v2',progressionIndex=index):ObjectDefinition {
+ if(ruleset==='v2')return objectAt(seed,index,catalog);
+ const roster=OBJECT_CATALOGS[catalog];
+ const stable=roster.filter(o=>['box','sofa','books','trunk','microwave','container'].includes(o.id));
+ const turn=Math.max(0,Math.floor(index));
+ const progression=Math.max(0,Math.floor(progressionIndex));
+ const rng=createRng(`${seed}:v3:object:${turn}`);
+ const cap=progression<8?2:progression<12?3:progression<18?4:progression<26?5:6;
+ const candidates=progression<8?stable.filter(o=>o.difficultyWeight<=2):roster.filter(o=>o.difficultyWeight<=cap&&(!o.rare||progression>=26));
+ const original=turn===0?getObject('box'):candidates[Math.floor(rng()*candidates.length)];
+ return { ...original, mass:Math.min(6,Math.max(2.5,original.mass)), friction:Math.max(.88,original.friction), restitution:Math.min(.012,original.restitution), centerOfMassOffset:original.centerOfMassOffset?{x:original.centerOfMassOffset.x*.3,y:original.centerOfMassOffset.y*.3}:undefined };
+}

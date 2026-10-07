@@ -27,6 +27,8 @@ function backendUrl(value: string): string {
 }
 
 /** Public pseudonyms only: no HTML, control characters, URLs or contact fields. */
+export function requiredPublicName(value:unknown):string {const name=sanitizePublicName(value);return name==='Anónimo'?'':name;}
+
 export function sanitizePublicName(value: unknown): string {
   if (typeof value !== 'string') return 'Anónimo';
   return Array.from(value.normalize('NFKC').replace(/[^\p{L}\p{N} _-]/gu, '').replace(/\s+/g, ' ').trim())
@@ -101,13 +103,14 @@ export class BackendService {
       try {
         if (!publicKeyIsValid(key)) throw new Error('Supabase requires a publishable or legacy anon key');
         client = createClient(backendUrl(config.url.trim()), key, {
-          auth: { persistSession: true, autoRefreshToken: false, detectSessionInUrl: false },
+          auth: { persistSession: true, autoRefreshToken: false, detectSessionInUrl: true, flowType: 'pkce' },
           global: { fetch: timedFetch },
         });
       } catch (error) { this.rememberError(error); }
     }
     this.client = client;
     this.enabled = client !== null;
+    client?.auth.onAuthStateChange?.((_event, session) => { this.userId = session?.user.id ?? null; });
   }
 
   initialize(): Promise<void> {
@@ -194,6 +197,17 @@ export class BackendService {
       if (response.error) throw response.error;
       if (!isValidChallenge(response.data)) return null;
       return { ...response.data, name: sanitizePublicName(response.data.name) };
+    }, null);
+  }
+
+  async loadCloudProfile(): Promise<unknown | null> {
+    if (!this.client) return null;
+    await this.initialize();
+    if (!this.userId) return null;
+    return this.safely(async () => {
+      const response = await withinDeadline(this.client!.from('profiles').select('data').eq('user_id',this.userId!).maybeSingle());
+      if (response.error) throw response.error;
+      return response.data?.data ?? null;
     }, null);
   }
 

@@ -6,14 +6,14 @@ import type { ObjectDefinition } from '../../types';
  * No concave decomposition dependency is needed; the parent hull is broad-phase
  * only and Matter tests actual child parts when resolving collisions.
  */
-export function createObjectBody(def: ObjectDefinition, x: number, y: number): Matter.Body {
+export function createObjectBody(def: ObjectDefinition, x: number, y: number, ruleset: 'v2'|'v3' = 'v2'): Matter.Body {
   const w = def.width;
   const h = def.height;
   const options: Matter.IChamferableBodyDefinition = {
     label: def.id,
     friction: def.friction,
-    frictionStatic: 1,
-    frictionAir: 0.006,
+    frictionStatic: ruleset === 'v3' ? 2 : 1,
+    frictionAir: ruleset === 'v3' ? .025 : .006,
     restitution: def.restitution,
     // At the fixed 60 Hz simulation rate this requires ~900 ms of low motion.
     sleepThreshold: 54,
@@ -201,5 +201,6 @@ export function createObjectBody(def: ObjectDefinition, x: number, y: number): M
   // gameplay COM is then the sole sprite offset, just as with simple bodies.
   Matter.Body.setCentre(body, { x, y }, false);
   if (def.centerOfMassOffset) Matter.Body.setCentre(body, def.centerOfMassOffset, true);
+  if (ruleset === 'v3') Matter.Body.setInertia(body, body.inertia * 1.7);
   return body;
 }

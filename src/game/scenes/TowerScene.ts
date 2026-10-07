@@ -1,3 +1,4 @@
+import { t } from '../../services/i18n';
 import Phaser from 'phaser';
 import type { AidId, GameControls, GameSnapshot, RunConfig, RunResult, Profile } from '../../types';
 import { createObjectTextures } from '../objects/textures';
@@ -57,7 +58,7 @@ export class TowerScene extends Phaser.Scene implements GameControls {
  secondChance(){const ok=this.sim?.activateAid('second-chance')??false;if(ok){this.syncSprites();this.emit();}return ok;}
  activateAid(id:AidId){const ok=this.sim?.activateAid(id)??false;if(ok){this.syncSprites();this.emit();}return ok;}
  canActivateAid(id:AidId){return this.sim?.canActivateAid(id)??false;}
- replay(){return {events:structuredClone(this.sim.events),finalTick:this.sim.tick,tainted:this.sim.tainted};}
+ replay(){return {ruleset:this.sim.config.ruleset,events:structuredClone(this.sim.events),finalTick:this.sim.tick,tainted:this.sim.tainted};}
  timing(){return {tick:this.sim.tick,craneX:this.sim.craneX,cameraY:this.sim.cameraY};}
  snapshot():GameSnapshot{return this.sim.snapshot(Math.round(this.game.loop.actualFps));}
  private emit(){if(this.sim)this.hooks.snapshot(this.snapshot());}
@@ -136,7 +137,8 @@ export class TowerScene extends Phaser.Scene implements GameControls {
   while(this.previewSprites.length>preview.length)this.previewSprites.pop()!.destroy();
   this.previewLabel?.setVisible(preview.length>0);
   if(preview.length){
-   this.previewLabel??=this.add.text(20,288,'PRÓXIMAS PIEZAS',{fontFamily:'sans-serif',fontSize:'7px',color:'#bbd1c4'}).setDepth(22);
+   this.previewLabel??=this.add.text(20,288,t('PRÓXIMAS PIEZAS'),{fontFamily:'sans-serif',fontSize:'7px',color:'#bbd1c4'}).setDepth(22);
+   this.previewLabel.setText(t('PRÓXIMAS PIEZAS'));
    g.fillStyle(0x172e38,.8);g.fillRoundedRect(12,280,145,80,8);preview.forEach((def,i)=>{
    const sprite=this.previewSprites[i]??(this.previewSprites[i]=this.add.image(0,0,'object-'+def.id).setDepth(22));
    sprite.setTexture('object-'+def.id).setPosition(42+i*44,326).setScale(Math.min(34/def.width,48/def.height));

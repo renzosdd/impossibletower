@@ -18,3 +18,9 @@ export function getActiveMissions(profile: Pick<Profile, 'runs' | 'missions'>): 
     .filter((mission) => !profile.missions[mission.id]?.claimed)
     .slice(0, 3);
 }
+
+export const DAILY_MISSIONS:Mission[] = [
+ {id:'daily-three-runs',name:'Completá 3 torres de al menos 5 objetos',target:3,reward:2,metric:'qualifyingRuns'},
+ {id:'daily-eight-perfect',name:'Acumulá 8 colocaciones perfectas',target:8,reward:2,metric:'perfectDrops'},
+ {id:'daily-thirty',name:'Alcanzá 30 metros en una partida',target:30,reward:2,metric:'height'},
+];

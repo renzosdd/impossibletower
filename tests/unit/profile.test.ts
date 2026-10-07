@@ -39,7 +39,10 @@ describe('versioned local profiles', () => {
     });
     expect(profile.version).toBe(2);
     expect(profile.personalBest).toBe(72.5);
-    expect(profile.coins).toBe(35);
+    expect(profile.coins).toBe(0);
+    expect(profile.economyVersion).toBe(3);
+    expect(profile.legacyDailyBest).toBe(42.1);
+    expect(migrateProfile(profile)).toEqual(profile);
     expect(profile.settings).toEqual({ music: false, sfx: false, haptics: false });
     expect(profile.selectedCosmetics).toEqual({ crane: 'crane-coral', background: 'background-default', trail: 'trail-default', effect: 'effect-default' });
     expect(profile.unlockedCosmetics.filter((id) => id === 'crane-coral')).toHaveLength(1);

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test('legal pages load independently without game or advertising scripts', async ({ page }) => {
- for (const path of ['/privacidad/','/terminos/','/reglas-ranking/']) {
+ for (const path of ['/privacidad/','/terminos/','/reglas-ranking/','/en/privacidad/','/en/terminos/','/en/reglas-ranking/']) {
   const response=await page.goto(path);
   expect(response?.status()).toBe(200);
   await expect(page.locator('body')).toContainText('Renzo Dogliotti');
@@ -26,7 +26,7 @@ test('published Casual uses the selected catalog while V1 challenges retain lega
  test.skip(process.env.PLAYWRIGHT_RELEASE_VERIFY!=='1');
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto('/?debug=1');
- await page.getByRole('button', { name: /^JUGAR$/i }).click();
+ await page.getByRole('button', { name: /^Juego libre$/i }).click();
  await expect.poll(()=>page.evaluate(()=>(window as any).__tower?.snapshot()?.catalog)).toBe(process.env.PLAYWRIGHT_RELEASE_CATALOG??'extended-24');
  const challenge={version:1,seed:'release-old-challenge',height:10,score:500};
  const token=Buffer.from(JSON.stringify(challenge)).toString('base64url');
@@ -35,3 +35,5 @@ test('published Casual uses the selected catalog while V1 challenges retain lega
  await expect.poll(()=>page.evaluate(()=>(window as any).__tower?.snapshot()?.catalog)).toBe('legacy-18');
  expect(errors).toEqual([]);
 });
+
+ test.beforeEach(async({page})=>{await page.addInitScript(()=>{if(!localStorage.getItem('impossible-tower.profile'))localStorage.setItem('impossible-tower.profile',JSON.stringify({version:2,economyVersion:3,publicName:'Tester'}));});});

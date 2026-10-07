@@ -18,9 +18,10 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     launchOptions: { executablePath: executable, args: ['--no-sandbox', '--disable-dev-shm-usage'] },
   },
-  projects: [{ name: 'chromium-mobile', use: { ...devices['Pixel 5'] } }],
+  projects: [{ name: 'chromium-mobile', use: { ...devices['Pixel 5'] } },{name:'chromium-desktop',use:{...devices['Desktop Chrome'],viewport:{width:1440,height:900}}}],
   webServer: externalUrl ? undefined : {
     command: 'npm run dev -- --port 5173 --strictPort',
+    env:{VITE_SUPABASE_URL:'',VITE_SUPABASE_PUBLISHABLE_KEY:'',VITE_SUPABASE_ANON_KEY:'',VITE_AD_PROVIDER:'none',VITE_SERVER_ECONOMY_ENABLED:'false',VITE_SERVER_RANKINGS_ENABLED:'false'},
     url: 'http://127.0.0.1:5173',
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
