@@ -46,9 +46,10 @@ describe('versioned local profiles', () => {
     expect(profile.settings).toEqual({ music: false, sfx: false, haptics: false });
     expect(profile.selectedCosmetics).toEqual({ crane: 'crane-coral', background: 'background-default', trail: 'trail-default', effect: 'effect-default' });
     expect(profile.unlockedCosmetics.filter((id) => id === 'crane-coral')).toHaveLength(1);
-    expect(profile.achievements).toEqual(['first-stack']);
+    expect(profile.achievements).toEqual([]);expect(profile.badgeCatalogVersion).toBe(2);
     expect(profile.missions['reach-thirty']).toEqual({ progress: 30, claimed: true });
-    expect(profile.daily).toEqual({ '2026-02-28': { best: 42.1, attempts: 2 } });
+    expect(profile.daily).toEqual({});
+    expect(profile.legacyDailyBest).toBe(42.1);
     expect(profile.publicName).toBe('Lucas');
   });
 

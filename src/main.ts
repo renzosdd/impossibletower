@@ -1,3 +1,4 @@
+import { AID_CATALOG, PAYMENTS_RELEASE_ENABLED } from './content/economy';
 import { getLanguage, setLanguage, t, localizeDocument } from './services/i18n';
 import { registerSW } from 'virtual:pwa-register';
 import { Interface } from './ui/Interface';
@@ -22,6 +23,7 @@ import { AccountInterface, type AccountAction } from './ui/AccountInterface';
 import type { AccountRun, AccountSnapshot, RunTicket } from './types/account';
 import { ACCOUNT_COSMETICS, COSMETICS } from './content/cosmetics';
 import './ui/account.css';
+import './ui/redesign.css';
 import { connectGoogleTcfConsent } from './services/privacy/tcf';
 
 let profile = beginSession(loadProfile());
@@ -70,7 +72,7 @@ function applySceneProfile() {
 function refreshRewards() {
  ui.setRewardAvailability(false, false, false);
  ui.setShopRewards(0,false);
- if(snapshot)accountUI.setRun(snapshot,{available:runTicket?.aids??[],used:snapshot.aidsUsed??[],canAid:id=>!!runTicket&&!!scene?.canActivateAid(id)&&(id!=='second-chance'||canRetry())});
+ if(snapshot)accountUI.setRun(snapshot,{available:runTicket?.aidRulesVersion===2?(Object.keys(AID_CATALOG) as import('./content/economy').AidId[]).filter(id=>(accountSnapshot?.inventory[id]??0)>0):runTicket?.aids??[],used:snapshot.aidsUsed??[],canAid:id=>!!runTicket&&!!scene?.canActivateAid(id)&&(id!=='second-chance'||canRetry())});
 }
 function updateProfile() {
  saveProfile(profile);
@@ -120,7 +122,7 @@ function commit() {
   const replay=scene?.replay(),ticket=runTicket;
   const progress=recordRun(profile,lastResult);profile=progress.profile;lastResult.coins=0;updateProfile();
   if(accountSnapshot?.recoverable&&privacyConsent.canUseOnlineServices())void backend.syncProfile(profile);
-  ui.setProvisional(false);ui.showProgress(progress.completedMissions,progress.newAchievements,false);
+  ui.setProvisional(false);ui.setResultPending(!!ticket);ui.showProgress(progress.completedMissions,progress.newAchievements,false);
   if(ticket&&replay&&!replay.tainted&&privacyConsent.canUseOnlineServices())pendingSubmission=submitAccountRun(ticket,replay.events,replay.finalTick);
  }
  activeTrial=false;applySceneProfile();refreshRewards();
@@ -152,8 +154,8 @@ async function start(config: RunConfig) {
   runTicket = null; accountRun = null;
   if (account.enabled && privacyConsent.canUseOnlineServices() && config.mode !== 'challenge' && params.get('debug') !== '1') {
    await pendingReceipt;
-   runTicket = await account.startRun(config.mode, accountSnapshot?.recoverable?accountUI.getLoadout():[], undefined, profile.publicName);
-   if (runTicket) { config = { ...config, seed: runTicket.seed, catalog: runTicket.catalog, ruleset: runTicket.ruleset }; accountUI.clearLoadout(); }
+   runTicket = await account.startRun(config.mode, [], undefined, profile.publicName);
+   if (runTicket) { config = { ...config, seed: runTicket.seed, catalog: runTicket.catalog, ruleset: runTicket.ruleset,aidRulesVersion:runTicket.aidRulesVersion??1 }; accountUI.clearLoadout(); }
    else if(config.mode==='daily'){if(account.lastError==='No Daily attempts left'){await refreshAccount();ui.showDailyRefill();}else ui.toast(account.lastError??'No se pudo iniciar Daily.');return;}else ui.toast('Sin conexión: esta práctica no participa en rankings ni acredita monedas.');
   }
   manualPaused = false;
@@ -166,11 +168,6 @@ async function start(config: RunConfig) {
   applySceneProfile();
   scene.start(config);
   scene.pause(true);
-  if (runTicket) for (const id of runTicket.aids.filter(id => ['guide-5','guide-10','preview','focus'].includes(id))) {
-   const permitted = await account.useAid(runTicket.id, id, 0);
-   if (permitted) scene.activateAid(id);
-  }
-  if(runTicket)await refreshAccount();
   ui.showGame(config, profile);
   if(!runTicket&&config.mode!=='challenge')ui.toast('Sin conexión: esta práctica no participa en rankings ni acredita monedas.');
   accountUI.renderMenu();
@@ -202,11 +199,11 @@ async function adBreak(operation: () => Promise<AdResult>): Promise<AdResult | u
   applyPause();
  }
 }
-function accountView() { return { localCoins:profile.coins,ownedCosmetics:profile.unlockedCosmetics,selectedCosmetics:profile.selectedCosmetics,achievements:profile.achievements,badgeProgress:profile.badgeProgress,snapshot:accountSnapshot,email:accountEmail,authMode:accountAuthMode,otpSent,busy:accountBusy,error:account.lastError,run:accountRun,selectedCosmetic:profile.selectedCosmetics.crane }; }
+function accountView() { return { localCoins:profile.coins,ownedCosmetics:profile.unlockedCosmetics,selectedCosmetics:profile.selectedCosmetics,achievements:profile.achievements,badgeProgress:profile.badgeProgress,snapshot:accountSnapshot,publicName:profile.publicName,email:accountEmail,authMode:accountAuthMode,otpSent,busy:accountBusy,error:account.lastError,run:accountRun,selectedCosmetic:profile.selectedCosmetics.crane }; }
 async function refreshAccount() {
  const onlineAllowed=privacyConsent.canUseOnlineServices();
- const rankingPeriods=(import.meta.env.VITE_RANKING_PERIODS??'daily,monthly').split(',').map((value:string)=>value.trim()).filter((value:string)=>['daily','monthly'].includes(value)) as import('./content/economy').RankingPeriod[];
- accountUI.setEnabledFlags({economy:account.enabled,rankings:account.enabled&&import.meta.env.VITE_SERVER_RANKINGS_ENABLED==='true',rankingPeriods,payments:false,paymentMode:'disabled',onlineAllowed});
+ const rankingPeriods=(import.meta.env.VITE_RANKING_PERIODS??'daily,weekly,all-time,monthly').split(',').map((value:string)=>value.trim()).filter((value:string)=>['daily','weekly','all-time','monthly'].includes(value)) as import('./content/economy').RankingPeriod[];
+ accountUI.setEnabledFlags({economy:account.enabled,rankings:account.enabled&&import.meta.env.VITE_SERVER_RANKINGS_ENABLED==='true',rankingPeriods,payments:PAYMENTS_RELEASE_ENABLED&&import.meta.env.VITE_PAYPAL_ENABLED==='true',paymentMode:import.meta.env.VITE_PAYPAL_ENABLED==='true'?(import.meta.env.VITE_PAYPAL_ENVIRONMENT==='live'?'live':'sandbox'):'disabled',onlineAllowed});
  if(account.enabled&&onlineAllowed) {
   await backend.initialize();
   const state=await account.snapshot();
@@ -217,13 +214,14 @@ async function refreshAccount() {
    if(owner){try{const previous=localStorage.getItem('impossible-tower.owner');if(previous!==owner&&state.recoverable){const cloud=await backend.loadCloudProfile();profile=cloud?migrateProfile(cloud):defaultProfile();ui.setProfile(profile);}localStorage.setItem('impossible-tower.owner',owner);}catch{}}
 
    profile.unlockedCosmetics=[...new Set([...profile.unlockedCosmetics,...state.onlineCosmetics])];
-   if(state.progress){profile.missionDay=state.attempts?.day??new Date().toISOString().slice(0,10);profile.achievements=[...new Set([...profile.achievements,...state.progress.achievements])];for(const [id,value]of Object.entries(state.progress.badgeProgress))profile.badgeProgress![id]=Math.max(profile.badgeProgress?.[id]??0,value);for(const [id,value]of Object.entries(state.progress.missions))profile.missions[id]=value;}
+   if(state.progress){profile.missionDay=state.attempts?.day??new Date().toISOString().slice(0,10);if(state.progress.badgeCatalogVersion===2){profile.achievements=state.progress.achievements;profile.badgeProgress={...state.progress.badgeProgress};}for(const [id,value]of Object.entries(state.progress.missions))profile.missions[id]=value;}
    if(state.dailyBest)profile.daily[state.attempts?.day??new Date().toISOString().slice(0,10)]={best:state.dailyBest,attempts:0};saveProfile(profile);
    try{if(params.get('ref')&&!state.recoverable&&!localStorage.getItem('impossible-tower.referral')){const ref=await account.captureReferral(params.get('ref')!);if(ref?.token)localStorage.setItem('impossible-tower.referral',ref.token);}
    const referral=localStorage.getItem('impossible-tower.referral');if(referral&&state.recoverable){await account.claimReferral(referral);localStorage.removeItem('impossible-tower.referral');}}catch{}
   }
  }
  accountUI.setState(accountView());ui.setAccount(accountSnapshot,ads.isRewardedAvailable());refreshRewards();
+ if(!document.querySelector('.ui-dialog[open]')&&!starting&&!accountBusy&&!adActive&&(!snapshot||snapshot.state==='over')){const notification=accountSnapshot?.notifications?.[0];if(notification)accountUI.showPodium(notification);}
 
 }
 async function submitAccountRun(ticket:RunTicket,events:import('./types/account').ReplayInput[],finalTick:number) {
@@ -231,7 +229,7 @@ async function submitAccountRun(ticket:RunTicket,events:import('./types/account'
  pendingReceipt=receipt;
  let status=await receipt;
  if(runTicket?.id===ticket.id){accountRun=status;accountUI.setState(accountView());}
- if(!status){ui.toast(account.lastError??'No se pudo enviar el resultado.');return;}
+ if(!status){if(runTicket?.id===ticket.id)ui.setResultPending(false);ui.toast(account.lastError??'No se pudo enviar el resultado.');return;}
  try{const ids=JSON.parse(localStorage.getItem('impossible-tower.pending-runs')??'[]') as string[];localStorage.setItem('impossible-tower.pending-runs',JSON.stringify([...new Set([...ids,ticket.id])]));}catch{}
  for(let attempt=0;attempt<6&&['pending','validating'].includes(status.status);attempt++) {
   await new Promise(resolve=>setTimeout(resolve,1000));
@@ -240,8 +238,8 @@ async function submitAccountRun(ticket:RunTicket,events:import('./types/account'
  if(runTicket?.id===ticket.id)accountRun=status;
  await refreshAccount();
  if(!['pending','validating'].includes(status.status))try{localStorage.setItem('impossible-tower.pending-runs',JSON.stringify((JSON.parse(localStorage.getItem('impossible-tower.pending-runs')??'[]') as string[]).filter(id=>id!==ticket.id)));}catch{}
- if(status.status==='accepted'){if(runTicket?.id===ticket.id){ui.showProgress(status.result?.completedMissions,status.result?.newAchievements,true,status.result?.earnedCoins??0);}ui.toast(`Ganaste ${status.result?.earnedCoins??0} monedas`);}
- else if(status.status==='rejected'||status.status==='verification_timeout')ui.toast('El resultado quedó local. No se acreditaron coins de cuenta.');
+ if(status.status==='accepted'){if(runTicket?.id===ticket.id){ui.showProgress(status.result?.completedMissions,status.result?.newAchievements,true,status.result?.earnedCoins??0);}}
+ else if(status.status==='rejected'||status.status==='verification_timeout'){if(runTicket?.id===ticket.id)ui.setResultPending(false);ui.toast('El resultado quedó local. No se acreditaron coins de cuenta.');}
 }
 function continueTower():boolean {
  if(!scene?.secondChance())return false;
@@ -253,7 +251,15 @@ async function handleAccount(action:AccountAction) {
  if(action.type==='ageGroup'){privacyConsent.saveAgeGroup(action.value);return;}
  if(action.type==='guardian'){privacyConsent.saveGuardianAuthorization(action.authorized);return;}
  if(action.type==='adsConsent'){privacyConsent.saveAdsConsent(action.value);return;}
+ if(action.type==='equipCosmetic'){
+  const cosmetic=[...COSMETICS,...ACCOUNT_COSMETICS].find(item=>item.id===action.id);
+  if(cosmetic&&(cosmetic.price===0||accountSnapshot?.onlineCosmetics.includes(action.id)||profile.unlockedCosmetics.includes(action.id))){profile.selectedCosmetics[cosmetic.category]=action.id;updateProfile();accountUI.setState(accountView());}
+  return;
+ }
  if(action.type==='loadout')return;
+ if(action.type==='openMissions'){ui.openMissions();return;}
+ if(action.type==='openBadges'){ui.openAchievements();return;}
+ if(action.type==='recoverPayment'){await recoverPayment();return;}
  if(!account.enabled&&action.type==='google'){ui.showModeLogin(loginMode,'Google todavía no está disponible.');return;}
  if(!privacyConsent.canUseOnlineServices()){if(action.type==='google')ui.closeModeDialog();accountUI.showPrivacySetup(action.type==='google'?action:undefined);return;}
  if(!account.enabled){accountUI.showAccount({...accountView(),error:'La cuenta online todavía no está habilitada. Tu progreso local sigue disponible.'});return;}
@@ -274,20 +280,18 @@ async function handleAccount(action:AccountAction) {
    }
    case 'buyAid': {const state=await account.buyAid(action.id);if(state)accountSnapshot=state;accountUI.showShop(accountView());break;}
    case 'buyCosmetic': {const state=await account.buyCosmetic(action.id);if(state){accountSnapshot=state;profile.unlockedCosmetics=[...new Set([...profile.unlockedCosmetics,...state.onlineCosmetics])];saveProfile(profile);}accountUI.showShop(accountView());break;}
-   case 'equipCosmetic': {
-    const cosmetic=[...COSMETICS,...ACCOUNT_COSMETICS].find(item=>item.id===action.id);
-    if(cosmetic&&(accountSnapshot?.onlineCosmetics.includes(action.id)||profile.unlockedCosmetics.includes(action.id))){profile.selectedCosmetics[cosmetic.category]=action.id;updateProfile();ui.toast(`${cosmetic.name} equipada.`);}
-    break;
-   }
    case 'useAid': {
     if(!runTicket||!scene?.canActivateAid(action.id)||action.id==='second-chance'&&!canRetry())break;
     const permitted=await account.useAid(runTicket.id,action.id,scene.replay().finalTick);
-    if(permitted){if(action.id==='second-chance'){if(runTicket&&!runTicket.aids.includes(action.id)){runTicket.aids=runTicket.aids.length>=2?[...(snapshot?.aidsUsed??[]),action.id]:[...runTicket.aids,action.id];}continueTower();}else scene.activateAid(action.id);await refreshAccount();}
+    if(permitted){if(!runTicket.aids.includes(action.id))runTicket.aids.push(action.id);if(action.id==='second-chance'){if(runTicket&&!runTicket.aids.includes(action.id)){runTicket.aids=runTicket.aids.length>=2?[...(snapshot?.aidsUsed??[]),action.id]:[...runTicket.aids,action.id];}continueTower();}else scene.activateAid(action.id);await refreshAccount();}
     else ui.toast(account.lastError??'No se pudo usar la ayuda.');
     break;
    }
    case 'rankings': {const board=await account.leaderboard(action.period);accountUI.showLeaderboard(board,action.period,account.lastError??(!board?'El ranking todavía no está habilitado.':''));break;}
-   case 'buyCoins': {ui.toast('Compras próximamente');break;}
+   case 'buyCoins': {const order=await account.createOrder(action.packId,action.adultConfirmed);if(order){try{localStorage.setItem('impossible-tower.pending-payment',order.orderId);}catch{}location.assign(order.approvalUrl);}else accountUI.showShop({...accountView(),error:account.lastError},'coins');break;}
+   case 'redeemCode': {const state=await account.redeemCode(action.code);if(state){accountSnapshot=state;accountUI.showShop({...accountView(),error:undefined},'coins');ui.toast('Código canjeado.');}break;}
+   case 'claimBadge': {const state=await account.claimBadge(action.id);if(state){accountSnapshot=state;ui.setAccount(state,ads.isRewardedAvailable());ui.refreshAchievements();}else ui.toast(account.lastError??'No se pudo reclamar el premio.');break;}
+   case 'ackNotification': {const state=await account.ackNotification(action.id);if(state)accountSnapshot=state;break;}
   }
  }catch(error){ui.toast(error instanceof Error?error.message:'La cuenta no respondió. Podés seguir jugando.');}
  finally{accountBusy=false;ui.setLoginPending(false);accountUI.setState(accountView());applyPause();refreshRewards();}
@@ -303,7 +307,9 @@ async function handle(action: UIAction) {
   case 'guest':await start({mode:'casual',seed:randomSeed()});break;
   case 'finalize':commit();accountUI.renderMenu();break;
   case 'invite':await inviteFriends();break;
-  case 'buy-attempt':{accountBusy=true;ui.setAttemptPending(true);let purchased=false;try{const state=await account.buyAttempt();if(state){purchased=true;accountSnapshot=state;ui.setAccount(state,ads.isRewardedAvailable());}else ui.toast(account.lastError??'Te faltan monedas.');}finally{accountBusy=false;ui.setAttemptPending(false);}if(purchased){ui.closeModeDialog();await start({mode:'daily',seed:dailySeed()});}}break;
+  case 'refill':if(!accountSnapshot?.recoverable){loginMode='daily';ui.showModeLogin('daily');}else{await refreshAccount();ui.showDailyRefill();}break;
+  case 'claim-badge':await handleAccount({type:'claimBadge',id:action.id});break;
+  case 'buy-attempt':{accountBusy=true;ui.setAttemptPending(true);let purchased=false;try{const state=await account.buyAttempt();if(state){purchased=true;accountSnapshot=state;ui.setAccount(state,ads.isRewardedAvailable());}else ui.toast(account.lastError??'Te faltan monedas.');}finally{accountBusy=false;ui.setAttemptPending(false);}ui.showDailyRefill();}break;
   case 'ad-attempt':await rewardedAttempt();break;
   case 'play': if(action.mode==='casual'&&!accountSnapshot?.recoverable&&params.get('debug')!=='1'){loginMode='casual';ui.showModeLogin('casual');break;}await start({ mode: action.mode, seed: action.mode === 'daily' ? dailySeed() : action.mode === 'challenge' && challenge ? challenge.seed : randomSeed(), challenge: action.mode === 'challenge' ? challenge : undefined }); break;
   case 'restart': await start({ mode: gameConfig?.mode ?? 'casual', seed: gameConfig?.mode === 'casual' ? randomSeed() : gameConfig?.seed ?? dailySeed(), challenge: gameConfig?.challenge }); break;
@@ -332,7 +338,7 @@ async function handle(action: UIAction) {
     ui.toast(shared.method === 'copy' ? 'Enlace copiado. ¡Desafiá a alguien!' : 'Desafío compartido.');
    } else ui.showShareLink(shared.url);
   } break;
-  case 'leaderboard': await handleAccount({type:'rankings',period:action.kind==='today'?'daily':'monthly'});break;
+  case 'leaderboard': await handleAccount({type:'rankings',period:action.kind==='today'?'daily':'all-time'});break;
   case 'reward':break; // Coin/continuation advertising was replaced by Daily attempts.
   case 'install': if (installPrompt) { track('pwa_install_prompt'); await installPrompt.prompt(); await installPrompt.userChoice; installPrompt = undefined; ui.showInstallAvailable(false); } break;
   case 'debug': if (params.get('debug') === '1') {
@@ -378,7 +384,7 @@ async function rewardedAttempt(){
   if(state&&'balance'in state){granted=true;accountSnapshot=state;ui.setAccount(state,ads.isRewardedAvailable());accountUI.setState(accountView());}
   else ui.toast(account.lastError??'La cuenta no respondió.');
  }finally{accountBusy=false;ui.setAttemptPending(false);applyPause();refreshRewards();}
- if(granted){ui.closeModeDialog();await start({mode:'daily',seed:dailySeed()});}
+ if(granted)ui.showDailyRefill();
 }
 // Refresh the homepage counters without recreating result buttons during clicks.
 setInterval(()=>{if(!accountBusy&&!adActive&&!starting){if(!gameConfig)void refreshAccount();void recoverPendingRuns();}},30000);
@@ -388,3 +394,24 @@ async function recoverPendingRuns(){
  for(const id of ids.slice(-20)){const run=await account.run(id);if(!run?account.lastError!=='Run not found':['pending','validating'].includes(run.status))pending.push(id);else if(run?.status==='accepted'){if(runTicket?.id===id)ui.showProgress(run.result?.completedMissions,run.result?.newAchievements,true,run.result?.earnedCoins??0);await refreshAccount();}}
  localStorage.setItem('impossible-tower.pending-runs',JSON.stringify(pending));}catch{}
 }
+
+// Checkout returns never credit coins; the authenticated server reconciles the order.
+let paymentRecovery:Promise<void>|undefined;
+async function recoverPayment():Promise<void>{
+ if(paymentRecovery)return paymentRecovery;
+ paymentRecovery=(async()=>{
+  if(params.get('paypal')==='cancel'){try{localStorage.removeItem('impossible-tower.pending-payment');}catch{}ui.toast('Compra cancelada.');history.replaceState(null,'',location.pathname);return;}
+  let orderId=params.get('paypal')==='return'?params.get('token'):null;
+  if(orderId&&/^[A-Z0-9]{8,40}$/.test(orderId))try{localStorage.setItem('impossible-tower.pending-payment',orderId);}catch{}
+  if(!accountSnapshot?.recoverable){if(orderId)accountUI.showAccount({...accountView(),error:'Iniciá sesión con la cuenta Google que realizó la compra para recuperar el pago.'});return;}
+  try{orderId??=localStorage.getItem('impossible-tower.pending-payment');}catch{}
+  if(!orderId||!/^[A-Z0-9]{8,40}$/.test(orderId))return;
+  accountBusy=true;accountUI.setState(accountView());applyPause();
+  try{
+   const state=await account.captureOrder(orderId);
+   if(state){accountSnapshot=state;try{localStorage.removeItem('impossible-tower.pending-payment');}catch{}history.replaceState(null,'',location.pathname);ui.setAccount(state,ads.isRewardedAvailable());accountUI.showShop({...accountView(),error:undefined},'coins');ui.toast(state.paymentStatus==='refunded'?'Pago reembolsado.':state.paymentStatus==='reversed'?'Pago revertido.':'Compra completada.');}
+   else accountUI.showShop({...accountView(),error:account.lastError},'coins');
+  }finally{accountBusy=false;accountUI.setState(accountView());applyPause();}
+ })();try{await paymentRecovery;}finally{paymentRecovery=undefined;}
+}
+setTimeout(()=>void refreshAccount().then(()=>recoverPayment()),1000);

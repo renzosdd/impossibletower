@@ -6,8 +6,8 @@ export const env = (name: string) => Netlify.env.get(name);
 export const enabled = (name: string) => env(name) === 'true';
 export function rankingPeriods(): string[] {
   if (!enabled('SERVER_RANKINGS_ENABLED')) return [];
-  const periods = (env('SERVER_RANKING_PERIODS') || 'daily,monthly').split(',').map(value => value.trim());
-  if (!periods.length || periods.some(value => !['daily', 'monthly'].includes(value))) throw new ApiError(503, 'Rankings sin configurar.');
+  const periods = (env('SERVER_RANKING_PERIODS') || 'daily,weekly,all-time,monthly').split(',').map(value => value.trim());
+  if (!periods.length || periods.some(value => !['daily', 'weekly', 'all-time', 'monthly'].includes(value))) throw new ApiError(503, 'Rankings sin configurar.');
   return [...new Set(['daily', ...periods])];
 }
 export function required(name: string): string { const value = env(name); if (!value) throw new ApiError(503, 'Servicio sin configurar.'); return value; }

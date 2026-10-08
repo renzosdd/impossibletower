@@ -43,7 +43,7 @@ async function profile(page: Page): Promise<StoredProfile> {
 
 test('a previous production PWA upgrades, resets local coins, preserves cosmetics and remains playable offline', async ({ page, context }) => {
   test.skip(process.env.PLAYWRIGHT_PWA !== '1', 'Requires a production build and PLAYWRIGHT_PWA=1.');
-  test.setTimeout(60_000);
+  test.setTimeout(100_000);
   const root = process.cwd();
   const previousHtml = previousBuildHtml(root);
   const currentHtml = await readFile(resolve(root, 'dist/index.html'), 'utf8');

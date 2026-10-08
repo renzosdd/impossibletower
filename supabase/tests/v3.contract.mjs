@@ -9,7 +9,7 @@ const api = async(action,user,data={}) => (await db.query('select public.tower_a
 const snapshot = user => api('snapshot',user);
 const start = (user,mode='daily',extra={}) => api('start-run',user,{mode,aids:[],publicName:'Player',requestId:id(),...extra});
 await db.exec("create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);create table auth.identities(user_id uuid references auth.users,provider text,provider_id text,created_at timestamptz default clock_timestamp());create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;");
-for (const file of (await readdir(new URL('../migrations/',import.meta.url))).filter(f=>f.endsWith('.sql')).sort()) await db.exec(await readFile(new URL(`../migrations/${file}`,import.meta.url),'utf8'));
+for (const file of (await readdir(new URL('../migrations/',import.meta.url))).filter(f=>f.endsWith('.sql')&&f<='20261007221500_tower_v3_competition.sql').sort()) await db.exec(await readFile(new URL(`../migrations/${file}`,import.meta.url),'utf8'));
 const newUser = async(google=true,createdAt=null) => {
  const user=id(); await db.exec('reset role');
  await db.query('insert into auth.users values($1,$2,$3)',[user,google?'test@example.test':null,google?new Date():null]);

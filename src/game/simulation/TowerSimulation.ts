@@ -35,6 +35,7 @@ export class TowerSimulation {
  latestAccuracy?:GameSnapshot['accuracy'];
  sequenceCursor=0;
  launches=0;
+ guideUntil=0;
  focusUntil=0;
  previewUntil=0;
  tainted=false;
@@ -124,7 +125,7 @@ export class TowerSimulation {
   if(!AID_IDS.includes(id)||this.aids.has(id)||this.aids.size>=2)return false;
   if(id==='second-chance')return this.canSecondChance();
   if((this.state==='paused'?this.pausedState:this.state)!=='ready')return false;
-  if(id==='guide-5'||id==='guide-10')return this.launches===0&&!this.aids.has('guide-5')&&!this.aids.has('guide-10');
+  if(id==='guide-5'||id==='guide-10')return (this.config.aidRulesVersion===2||this.launches===0)&&!this.aids.has('guide-5')&&!this.aids.has('guide-10');
   if(id==='skip')return this.sequenceCursor>=3;
   return true;
  }
@@ -152,6 +153,7 @@ export class TowerSimulation {
    if(this.config.ruleset==='v3'&&this.retryState){const r=this.retryState;this.stats=structuredClone(r.stats);this.precision=r.precision;this.perfectCombo=r.perfectCombo;this.topY=r.topY;this.peakTopY=r.peakTopY;this.cameraTarget=r.cameraTarget;this.cameraY=r.cameraY;this.phase=r.phase;this.craneX=r.craneX;this.slowMs=r.slowMs;this.sequenceCursor=r.sequenceCursor;this.latestAccuracy=r.accuracy;}
    this.result=undefined;this.falling=undefined;this.nextObject();
   }
+  if(id==='guide-5'||id==='guide-10')this.guideUntil=this.launches+(id==='guide-5'?5:10);
   if(id==='focus')this.focusUntil=this.launches+3;
   if(id==='preview')this.previewUntil=this.sequenceCursor+3;
   if(id==='skip'){this.aids.add(id);this.sequenceCursor++;this.nextObject();}
@@ -161,7 +163,7 @@ export class TowerSimulation {
   if(wasPaused&&this.state!=='paused'){this.pausedState=this.state;this.state='paused';}
   return true;
  }
- get guideActive():boolean {return this.aids.has('guide-10')&&this.launches<10||this.aids.has('guide-5')&&this.launches<5;}
+ get guideActive():boolean {if(this.config.aidRulesVersion===2)return this.launches<this.guideUntil;return this.aids.has('guide-10')&&this.launches<10||this.aids.has('guide-5')&&this.launches<5;}
  preview():ObjectDefinition[] {return this.aids.has('preview')?[1,2,3].filter(i=>this.sequenceCursor+i<=this.previewUntil).map(i=>this.object(this.sequenceCursor+i)):[];}
  snapshot(fps=60):GameSnapshot {return {...this.stats,objectIds:[...this.stats.objectIds],aidsUsed:[...this.aids],duration:Math.round(this.elapsed/1000),state:this.state,nextObject:this.def.name,accuracy:this.latestAccuracy,fps};}
  private simulation():void {

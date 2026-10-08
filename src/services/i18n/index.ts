@@ -1,9 +1,14 @@
+import { REDESIGN_EN } from './redesign';
 import { UI_EN } from './interface';
 import { LEGAL_EN } from './legal';
 export type Language='es'|'en';
 const KEY='impossible-tower.language';
-let language:Language='es';
-try{if(typeof localStorage!=='undefined'&&localStorage.getItem(KEY)==='en')language='en';}catch{}
+export function browserLanguage(languages:readonly string[]):Language {
+ for(const tag of languages){const base=tag.toLowerCase().split('-')[0];if(base==='es'||base==='en')return base;}
+ return 'en';
+}
+let language:Language=browserLanguage(typeof navigator!=='undefined'?(navigator.languages?.length?navigator.languages:[navigator.language]):[]);
+try{if(typeof localStorage!=='undefined'){const saved=localStorage.getItem(KEY);if(saved==='es'||saved==='en')language=saved;}}catch{}
 const listeners=new Set<()=>void>();
 export const getLanguage=()=>language;
 export function setLanguage(value:Language){language=value;try{localStorage.setItem(KEY,value);}catch{}if(typeof document!=='undefined')document.documentElement.lang=value;if(typeof document!=='undefined')document.querySelectorAll<HTMLElement>('[data-language]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.language===value)));listeners.forEach(fn=>fn());}
@@ -41,6 +46,7 @@ export const EN:Record<string,string>={
 };
 Object.assign(EN,LEGAL_EN,UI_EN);
 const ES:Record<string,string>={'Insufficient coins':'Te faltan monedas.','No Daily attempts left':'No quedan intentos Daily.','Google account required':'Iniciá sesión con Google.','Public name required':'Ingresá un nombre público.','Referral expired':'La invitación venció.','Invalid replay':'No se pudo validar la partida.'};
+Object.assign(ES,{'Invalid badge':'Insignia inválida.','Badge not earned':'Todavía no lograste esta insignia.','Guides cannot be combined':'Las dos guías no se pueden combinar.','Aid already used':'Ya usaste esta ayuda.'});
 Object.assign(ES,{'Ruleset mismatch':'El reglamento de la partida no coincide con el ticket.','Authentication required':'Iniciá sesión para usar tu cuenta.','Invalid canonical result':'No se pudo validar la partida.','Invalid loadout':'Selección de ayudas inválida.','Invalid mode':'Modo inválido.','Invalid period key':'Período inválido.','Request already used':'Esta operación ya fue procesada.','Reward expired at daily reset':'El anuncio venció al renovar el día.','Reward not found':'No se encontró la recompensa.','Unknown cosmetic':'Estilo inválido.','Unknown reward':'Recompensa inválida.','COINS':'MONEDAS','SCORE':'PUNTAJE','PERFECT DROPS':'COLOCACIONES PERFECTAS','PERFECT DROP':'PERFECTO','GREAT':'EXCELENTE','GOOD':'BIEN','RISKY':'ARRIESGADO','Access denied':'El acceso fue cancelado.','Offline':'Sin conexión.'});
 
 ES["Daily ad limit reached"]="Límite de anuncios del día alcanzado.";EN["Daily ad limit reached"]="Daily ad limit reached.";
@@ -87,6 +93,7 @@ const patterns:[RegExp,(m:RegExpMatchArray)=>string][]=[
  [/^Llegué a (.+) m en Impossible Tower\. ¿Me superás\?$/,m=>`I reached ${m[1]} m in Impossible Tower. Can you beat me?`],
  [/^(\d+) objetos · (\d+) puntos$/,m=>`${m[1]} objects · ${m[2]} points`],
 ];
+Object.assign(EN,REDESIGN_EN);
 export function t(text:string):string {const key=text.trim();if(language==='es')return ES[key]?text.replace(key,ES[key]):text.replace(/\bcoins\b/gi,value=>value==='COINS'?'MONEDAS':'monedas');if(EN[key])return text.replace(key,EN[key]);for(const [r,fn]of patterns){const m=key.match(r);if(m)return text.replace(key,fn(m));}return text;}
 /** Localize legacy DOM as well as dynamically added dialogs, keeping original copy for toggles. */
 export function localizeDocument(){

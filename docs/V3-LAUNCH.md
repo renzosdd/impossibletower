@@ -1,6 +1,6 @@
 # V3: operación y lanzamiento
 
-Esta entrega se valida localmente antes de habilitar competencia. No activar anuncios, compras ni eventos de producción usando las respuestas simuladas de los tests.
+Estado al **8 de octubre de 2026, 00:10 UTC**: backend V3 publicado, cuatro migraciones presentes y economía/rankings Daily y mensual habilitados en producción. Google ya está habilitado; redirección OAuth verificada. Falta completar el acceso interactivo y una Daily real. [Pasos y verificación de producción](GOOGLE-LOGIN-SETUP.md). Anuncios y compras permanecen desactivados; las pruebas simuladas no acreditan integraciones reales.
 
 ## Contratos implementados
 
@@ -48,7 +48,7 @@ Estos tests interceptan Auth y API; no demuestran acceso Google real ni disponib
 - PWA: práctica sin conexión y actualización desde el cliente anterior aprobadas en ambos dispositivos; la migración elimina las monedas locales y conserva el progreso.
 - Ajuste del inicio: 24 casos distintos de navegador aprobados entre escritorio y móvil, incluidos corazones, acceso por modo, recarga única, saldo insuficiente, Google simulado después de privacidad, ES/EN, foco de teclado, Ranking y reinicio. La revisión visual incluye una ventana de 640 px de alto con el inicio completo sin scroll.
 
-Quedan pendientes las comprobaciones externas de la sección siguiente: playtest humano, OAuth y proveedor publicitario reales, y transacciones concurrentes entre conexiones PostgreSQL en staging. Esta verificación no aplica migraciones ni activa competencia en producción.
+Quedan pendientes las comprobaciones externas de la sección siguiente: playtest humano, OAuth y proveedor publicitario reales, y transacciones concurrentes entre conexiones PostgreSQL en staging. Esta sección registra las pruebas locales del 7 de octubre; el estado posterior del backend publicado está en [GOOGLE-LOGIN-SETUP.md](GOOGLE-LOGIN-SETUP.md).
 
 ## Activación en staging y producción
 

@@ -13,8 +13,8 @@ export const COIN_PACKS = {
   large: { coins: 1400, amount: '12.99', currency: 'USD' },
 } as const;
 export type PackId = keyof typeof COIN_PACKS;
-export type RankingPeriod = 'daily' | 'weekly' | 'monthly';
-export const ECONOMY_LIMITS = { version:3, starter:60, gameplayDaily:0, missionsDaily:6, adDaily:0, adBonus:0, adCount:2, freeAttempts:3, attemptPrice:30, referralReward:5, referralDaily:10, referralDays:7, prizeMinimum:20, activeTicks:144000, wallMinutes:60, settlementMinutes:75 } as const;
+export type RankingPeriod = 'daily' | 'weekly' | 'monthly' | 'all-time';
+export const ECONOMY_LIMITS = { version:4, starter:60, gameplayDaily:0, missionsDaily:10, adDaily:0, adBonus:0, adCount:2, freeAttempts:3, attemptPrice:30, referralReward:5, referralDaily:10, referralDays:7, prizeMinimum:20, activeTicks:144000, wallMinutes:60, settlementMinutes:75 } as const;
 
 export function validLoadout(ids: unknown): ids is AidId[] {
   return Array.isArray(ids) && ids.length <= 2 && new Set(ids).size === ids.length
@@ -28,8 +28,8 @@ export function dailyPoints(rank:number,participants:number):number {
  return participants===1?10:Math.round(10+90*(participants-rank)/(participants-1));
 }
 export function rankingPrize(period:RankingPeriod,rank:number,participants:number):{coins:number;items:Partial<Record<AidId,number>>} {
- return {coins:period!=='daily'||rank<1||rank>prizeSlots(participants)?0:rank===1?30:rank===2?20:rank===3?10:rank<=10?5:2,items:{}};
+ return {coins:period!=='weekly'||rank<1||rank>prizeSlots(participants)?0:rank===1?60:rank===2?40:rank===3?20:rank<=10?10:4,items:{}};
 }
 
-/** Enable only in a separately reviewed payment release. Environment flags cannot enable charges. */
-export const PAYMENTS_RELEASE_ENABLED = false;
+/** Provider credentials and live approval are independently required on the server. */
+export const PAYMENTS_RELEASE_ENABLED = true;

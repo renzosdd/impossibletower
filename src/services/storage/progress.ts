@@ -47,7 +47,7 @@ export function recordRun(profile: Profile, result: RunStats, verified=false): P
   // Only verified runs advance daily missions. Offline badges and history remain local.
   const day=new Date().toISOString().slice(0,10);
   if(next.missionDay!==day){next.missionDay=day;for(const m of DAILY_MISSIONS)next.missions[m.id]={progress:0,claimed:false};}
-  metrics.qualifyingRuns=objects>=5?1:0;
+  metrics.qualifyingRuns=objects>=5?1:0;metrics.qualifyingDaily=result.mode==='daily'&&objects>=5?1:0;
   for (const mission of verified?DAILY_MISSIONS:[]) {
     const state = next.missions[mission.id];
     const amount = metrics[mission.metric] ?? 0;
@@ -74,8 +74,22 @@ export function recordRun(profile: Profile, result: RunStats, verified=false): P
       next.lastDailyDate = day;
     }
   }
-  metrics.dailyStreak = next.dailyStreak;
-
+  const totals=next.badgeMetrics??={};
+  totals.totalObjects=(totals.totalObjects??0)+objects;
+  totals.totalPerfect=(totals.totalPerfect??0)+perfect;
+  totals.qualifyingRuns=(totals.qualifyingRuns??0)+(objects>=5?1:0);
+  totals.rockets=(totals.rockets??0)+result.objectIds.filter(id=>id==='rocket').length;
+  next.badgeObjects=[...new Set([...(next.badgeObjects??[]),...result.objectIds])];
+  totals.uniqueObjects=next.badgeObjects.length;
+  if(metrics.qualifyingDaily){
+    const playedDay=/^tower:daily:(\d{4}-\d{2}-\d{2})/.exec(result.seed)?.[1]??day;
+    if((next.badgeLastDaily??'')<playedDay){
+      totals.currentStreak=next.badgeLastDaily===new Date(Date.parse(playedDay+'T00:00:00Z')-DAY_MS).toISOString().slice(0,10)?(totals.currentStreak??0)+1:1;
+      totals.dailyStreak=Math.max(totals.dailyStreak??0,totals.currentStreak);
+      totals.dailyDays=(totals.dailyDays??0)+1;next.badgeLastDaily=playedDay;
+    }
+  }
+  Object.assign(metrics,totals);
   for (const achievement of BADGES) {
     next.badgeProgress??={};
     next.badgeProgress[achievement.id]=Math.min(achievement.target,Math.max(next.badgeProgress[achievement.id]??0,metrics[achievement.metric]??0));

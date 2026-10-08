@@ -7,10 +7,10 @@ import { beginSession, buyCosmetic, recordRun, recordShare } from '../../src/ser
 import type { RunStats } from '../../src/types';
 
 it('renews daily mission progress on a new UTC session while preserving badges',()=>{
- const profile=defaultProfile();profile.missionDay='2000-01-01';profile.achievements=['first-stack'];
+ const profile=defaultProfile();profile.missionDay='2000-01-01';profile.achievements=['v2:stack:bronze'];
  for(const mission of DAILY_MISSIONS)profile.missions[mission.id]={progress:mission.target,claimed:true};
  const next=beginSession(profile);
- expect(next.missionDay).toBe(new Date().toISOString().slice(0,10));expect(next.achievements).toEqual(['first-stack']);
+ expect(next.missionDay).toBe(new Date().toISOString().slice(0,10));expect(next.achievements).toEqual(['v2:stack:bronze']);
  for(const mission of DAILY_MISSIONS)expect(next.missions[mission.id]).toEqual({progress:0,claimed:false});
 });
 
@@ -26,7 +26,7 @@ afterEach(() => vi.useRealTimers());
 
 describe('rotating goals and achievements', () => {
   it('contains the requested content and rotates three unclaimed goals every five runs', () => {
-    expect(ACHIEVEMENTS).toHaveLength(10);
+    expect(ACHIEVEMENTS).toHaveLength(36);
     expect(MISSIONS).toHaveLength(8);
     expect(COSMETICS.filter((item) => item.category === 'crane')).toHaveLength(5);
     expect(COSMETICS.filter((item) => item.category === 'background')).toHaveLength(3);
@@ -57,20 +57,20 @@ describe('rotating goals and achievements', () => {
 
   it('requires real consecutive Perfects rather than a Great combo for Perfect goals', () => {
     const mixed = recordRun(defaultProfile(), run({ maxCombo: 10, maxPerfectCombo: 2 }));
-    expect(mixed.newAchievements).not.toContain('perfect-five');
+    expect(mixed.newAchievements).not.toContain('v2:combo:silver');
     expect(mixed.profile.missions['three-perfect'].claimed).toBe(false);
     const perfect = recordRun(mixed.profile, run({ maxPerfectCombo: 10, perfectDrops: 10, objectsPlaced: 10 }),true);
-    expect(perfect.newAchievements).toEqual(expect.arrayContaining(['perfect-five', 'perfect-ten']));
+    expect(perfect.newAchievements).toEqual(expect.arrayContaining(['v2:combo:silver', 'v2:combo:gold']));
     expect(perfect.completedMissions).toContain('daily-eight-perfect');
     const again = recordRun(perfect.profile, run({ maxPerfectCombo: 10 }));
-    expect(again.newAchievements).not.toContain('perfect-five');
+    expect(again.newAchievements).not.toContain('v2:combo:silver');
   });
 
   it('unverified offline runs do not advance missions',()=>{const result=recordRun(defaultProfile(),run({objectsPlaced:10,perfectDrops:8,height:30}));expect(result.completedMissions).toEqual([]);expect(result.profile.missions['daily-three-runs'].progress).toBe(0);expect(result.earnedCoins).toBe(0);});
   it('awards height and object achievements without requiring a backend', () => {
     const result = recordRun(defaultProfile(), run({ height: 200, objectIds: ['rocket'] }));
     expect(result.newAchievements).toEqual(expect.arrayContaining([
-      'first-stack', 'fifty-meters', 'hundred-meters', 'cloud-toucher', 'chaos-master', 'rocket-scientist',
+      'v2:stack:bronze', 'v2:height:bronze', 'v2:height:silver', 'v2:height:gold', 'v2:rockets:bronze',
     ]));
     expect(result.profile.unlockedCosmetics).toEqual(expect.arrayContaining(['crane-coral', 'background-aurora']));
     expect(result.profile.personalBest).toBe(200);
@@ -98,20 +98,20 @@ describe('UTC daily history', () => {
     const initial = beginSession(defaultProfile());
     expect(initial.daily).toEqual({});
     expect(initial.sessionCount).toBe(1);
-    let profile = recordRun(initial, run({ mode: 'daily', height: 40 })).profile;
+    let profile = recordRun(initial, run({ mode: 'daily',objectsPlaced:5, height: 40 })).profile;
     expect(profile.dailyStreak).toBe(1);
-    profile = recordRun(profile, run({ mode: 'daily', height: 20 })).profile;
+    profile = recordRun(profile, run({ mode: 'daily',objectsPlaced:5, height: 20 })).profile;
     expect(profile.daily['2026-10-03']).toEqual({ best: 40, attempts: 2 });
     expect(profile.dailyStreak).toBe(1);
     vi.setSystemTime(new Date('2026-10-04T00:00:01Z'));
-    profile = recordRun(profile, run({ mode: 'daily' })).profile;
+    profile = recordRun(profile, run({ mode: 'daily',objectsPlaced:5 })).profile;
     expect(profile.dailyStreak).toBe(2);
     vi.setSystemTime(new Date('2026-10-05T01:00:00Z'));
-    const thirdDay = recordRun(profile, run({ mode: 'daily' }));
+    const thirdDay = recordRun(profile, run({ mode: 'daily',objectsPlaced:5 }));
     expect(thirdDay.profile.dailyStreak).toBe(3);
-    expect(thirdDay.newAchievements).toContain('daily-regular');
+    expect(thirdDay.newAchievements).toContain('v2:streak:bronze');
     vi.setSystemTime(new Date('2026-10-08T01:00:00Z'));
-    expect(recordRun(thirdDay.profile, run({ mode: 'daily' })).profile.dailyStreak).toBe(1);
+    expect(recordRun(thirdDay.profile, run({ mode: 'daily',objectsPlaced:5 })).profile.dailyStreak).toBe(1);
   });
 
   it('attributes a run spanning midnight to its seed date', () => {

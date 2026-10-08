@@ -1,4 +1,4 @@
-> Para V3, usar [V3-LAUNCH.md](V3-LAUNCH.md). Las etapas semanales y recompensas V2 de este archivo son históricas y no se habilitan en la entrega actual.
+> Estado V3 al 8 de octubre de 2026: backend publicado y economía/rankings Daily y mensual habilitados en producción. Google habilitado y redirección OAuth verificada; [estado y pasos para probar el acceso](GOOGLE-LOGIN-SETUP.md). Para operación actual, usar [V3-LAUNCH.md](V3-LAUNCH.md). Las secciones 1 y 2 siguientes conservan la configuración histórica V2 (OTP, flags apagados, semanas y recompensas anteriores); no son instrucciones de activación V3. SMTP no es requisito del acceso Google actual.
 
 # Activación de integraciones
 

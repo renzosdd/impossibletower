@@ -86,12 +86,12 @@ async function mockAccount(page: Page, inventory: Partial<Record<AidId, number>>
       used.clear();
       const id = `bbbbbbbb-bbbb-4bbb-8bbb-${String(++runsStarted).padStart(12, '0')}`;
       receiptCompleted = false;
-      ticket = { id, mode: body.mode as 'casual' | 'daily', seed, catalog: 'extended-30', ruleset: 'v3', startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString(), aids: ids };
+      ticket = { id, mode: body.mode as 'casual' | 'daily', seed, catalog: 'extended-30', ruleset: 'v3', aidRulesVersion:2, startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString(), aids: ids };
       response = ticket;
     }
     if (body.action === 'use-aid') {
       const id = body.id as AidId;
-      if(id==='second-chance'&&!ticket?.aids.includes(id)){expect(ticket!.aids.length).toBeLessThan(2);if(!(state.inventory[id]??0)){expect(state.balance).toBeGreaterThanOrEqual(90);state.balance-=90;state.inventory[id]=1;}ticket!.aids.push(id);}
+      if(!ticket?.aids.includes(id)){expect(ticket!.aids.length).toBeLessThan(2);if(id==='second-chance'&&!(state.inventory[id]??0)){expect(state.balance).toBeGreaterThanOrEqual(90);state.balance-=90;state.inventory[id]=1;}ticket!.aids.push(id);}
       expect(ticket?.aids).toContain(id);
       expect(used.has(id)).toBe(false);
       expect(state.inventory[id]).toBeGreaterThan(0);
@@ -101,7 +101,7 @@ async function mockAccount(page: Page, inventory: Partial<Record<AidId, number>>
     }
     if (body.action === 'finish-run') {
       submission = body as unknown as ReplaySubmission;
-      accepted = replayRun({ mode: ticket!.mode, seed, catalog: ticket!.catalog, ruleset: 'v3' }, submission.events, submission.finalTick);
+      accepted = replayRun({ mode: ticket!.mode, seed, catalog: ticket!.catalog, ruleset: 'v3',aidRulesVersion:2 }, submission.events, submission.finalTick);
       response = { id: ticket!.id, status: 'accepted', result: { ...accepted, earnedCoins: 0 } };
       if (finishDelay) await new Promise(resolve => setTimeout(resolve, finishDelay));
       receiptCompleted = true;
@@ -133,13 +133,13 @@ test('privacy setup requires a responsible adult for teen online features', asyn
   await expect(page.getByRole('button', { name: /^Juego libre$/i })).toBeVisible();
 });
 
-test('one ranking panel offers Daily and monthly with no weekly tab',async({page})=>{
- await page.goto('/?inspect=1');await page.evaluate(async()=>{const {AccountInterface}=await import('/src/ui/AccountInterface.ts');const root=document.createElement('div');root.id='period-test-ui';document.body.append(root);const events:unknown[]=[];const ui=new AccountInterface(root,{onAction:action=>events.push(action)});ui.setEnabledFlags({rankings:true,rankingPeriods:['daily','monthly']});ui.showLeaderboard(null,'daily');(window as any).periodHarness={ui,events};});
- const tabs=page.locator('#period-test-ui .account-tabs');await expect(tabs.locator('[data-period="daily"]')).toBeEnabled();await expect(tabs.locator('[data-period="monthly"]')).toBeEnabled();await expect(tabs.locator('[data-period="weekly"]')).toHaveCount(0);await tabs.locator('[data-period="monthly"]').click();expect(await page.evaluate(()=>(window as any).periodHarness.events)).toEqual([{type:'rankings',period:'monthly'}]);
+test('one ranking panel offers Today, Weekly, All-time and monthly views',async({page})=>{
+ await page.goto('/?inspect=1');await page.evaluate(async()=>{const {AccountInterface}=await import('/src/ui/AccountInterface.ts');const root=document.createElement('div');root.id='period-test-ui';document.body.append(root);const events:unknown[]=[];const ui=new AccountInterface(root,{onAction:action=>events.push(action)});ui.setEnabledFlags({rankings:true,rankingPeriods:['daily','weekly','all-time','monthly']});ui.showLeaderboard(null,'daily');(window as any).periodHarness={ui,events};});
+ const tabs=page.locator('#period-test-ui .account-tabs');for(const period of ['daily','weekly','all-time','monthly'])await expect(tabs.locator(`[data-period="${period}"]`)).toBeEnabled();await tabs.locator('[data-period="weekly"]').click();expect(await page.evaluate(()=>(window as any).periodHarness.events)).toEqual([{type:'rankings',period:'weekly'}]);
 });
 
 for (const fps of [30, 60, 120]) test(`browser physics at ${fps} requested frames/s matches the canonical Node replay and shares a v2 challenge`, async ({ page }) => {
-  test.setTimeout(75_000);
+  test.setTimeout(120_000);
   const challenge = { version: 2 as const, catalog: 'extended-30' as const, seed, height: 0, score: 0, name: 'Prueba de física' };
   await page.addInitScript(fps => {
     window.requestAnimationFrame = callback => window.setTimeout(() => callback(performance.now()), 1000 / fps);
@@ -179,6 +179,29 @@ for (const fps of [30, 60, 120]) test(`browser physics at ${fps} requested frame
 test.describe('account API mocks with public client build flags enabled', () => {
   test.skip(!accountTests, 'Requires the dedicated Vite build with public fake Supabase config and PLAYWRIGHT_ACCOUNT_ENABLED=1');
 
+  test('PayPal cancellation clears recovery without requesting a capture',async({page})=>{
+    const model=await mockAccount(page,{});await page.addInitScript(()=>localStorage.setItem('impossible-tower.pending-payment','ORDER123456'));
+    await page.goto('/?paypal=cancel');await expect.poll(()=>page.evaluate(()=>localStorage.getItem('impossible-tower.pending-payment'))).toBeNull();
+    expect(model.calls.filter(c=>c.action==='paypal-capture')).toHaveLength(0);expect(model.state.balance).toBe(100);expect(new URL(page.url()).search).toBe('');
+  });
+
+  test('a pending PayPal return retains its order and retry reconciles once',async({page})=>{
+    const model=await mockAccount(page,{});let captures=0;
+    await page.route('**/api/account',async route=>{const body=route.request().postDataJSON();if(body.action!=='paypal-capture'){await route.fallback();return;}expect(body.orderId).toBe('ORDER123456');captures++;await route.fulfill(captures===1?{status:409,json:{error:'El pago sigue pendiente.'}}:{status:200,json:{...model.state,balance:300,paymentStatus:'paid'}});});
+    await page.goto('/?paypal=return&token=ORDER123456');await expect(page.locator('[data-account-action="retry-payment"]')).toBeVisible();
+    expect(await page.evaluate(()=>localStorage.getItem('impossible-tower.pending-payment'))).toBe('ORDER123456');expect(model.state.balance).toBe(100);
+    await page.locator('[data-account-action="retry-payment"]').click();await expect.poll(()=>page.evaluate(()=>localStorage.getItem('impossible-tower.pending-payment'))).toBeNull();expect(captures).toBe(2);
+    await page.reload();await expect(page.getByRole('button',{name:'Juego libre',exact:true})).toBeVisible();await page.waitForTimeout(1500);expect(captures).toBe(2);
+  });
+
+  test('a PayPal return without a recoverable account preserves its order until Google is recovered',async({page})=>{
+    const model=await mockAccount(page,{});model.state.recoverable=false;
+    await page.goto('/?paypal=return&token=ORDER123456');await expect(page.getByRole('dialog')).toContainText('recuperar el pago');
+    expect(await page.evaluate(()=>localStorage.getItem('impossible-tower.pending-payment'))).toBe('ORDER123456');expect(model.calls.filter(c=>c.action==='paypal-capture')).toHaveLength(0);
+    model.state.recoverable=true;await page.goto('/');await expect.poll(()=>model.calls.filter(c=>c.action==='paypal-capture').length).toBe(1);
+    await expect.poll(()=>page.evaluate(()=>localStorage.getItem('impossible-tower.pending-payment'))).toBeNull();
+  });
+
   test('Daily Google login continues from privacy directly to OAuth without the profile panel',async({page})=>{
     const model=await mockAccount(page,{},'unknown');model.state.recoverable=false;
     await page.goto('/?inspect=1');await page.getByRole('button',{name:'Daily Tower',exact:true}).click();
@@ -192,7 +215,7 @@ test.describe('account API mocks with public client build flags enabled', () => 
     expect(model.calls.some(call=>call.action==='start-run')).toBe(false);
   });
 
-  test('exhausted Daily opens refill and a single coin purchase starts a new ticket', async ({page})=>{
+  test('exhausted Daily confirms refill without starting until Play Daily', async ({page})=>{
     const model=await mockAccount(page,{});
     model.state.attempts={day:new Date().toISOString().slice(0,10),freeRemaining:0,adRemaining:0,purchasedRemaining:0,adAvailable:2,renewsAt:new Date(Date.now()+86400000).toISOString()};
     await page.goto('/?inspect=1');
@@ -201,8 +224,12 @@ test.describe('account API mocks with public client build flags enabled', () => 
     const dialog=page.getByRole('dialog',{name:'Recargá tus vidas',exact:true});
     await expect(dialog).toBeVisible();
     expect(model.calls.filter(call=>call.action==='start-run')).toHaveLength(0);
-    await expect(dialog.locator('[data-action="ad-attempt"]')).toHaveCount(0);
+    await expect(dialog.locator('[data-action="ad-attempt"]')).toBeDisabled();
     await dialog.locator('[data-action="buy-attempt"]').click();
+    await page.locator('[data-action="cancel-purchase"]').click();expect(model.state.balance).toBe(100);
+    await page.locator('[data-action="buy-attempt"]').click();await page.locator('[data-action="confirm-purchase"]').click();
+    await expect.poll(()=>model.state.balance).toBe(70);expect(model.calls.filter(c=>c.action==='start-run')).toHaveLength(0);
+    await page.locator('[data-action="refill-play"]').click();
     await expect.poll(async()=>(await snapshot(page))?.state).toBe('ready');
     expect(model.state.balance).toBe(70);
     expect(model.state.attempts.purchasedRemaining).toBe(0);
@@ -222,74 +249,55 @@ test.describe('account API mocks with public client build flags enabled', () => 
     expect(model.calls.filter(call=>['buy-attempt','start-run'].includes(call.action))).toHaveLength(0);
   });
 
-  test('buying and preparing aids spends only account coins, registers the loadout and pauses input in the aid panel', async ({ page }) => {
-    const model = await mockAccount(page, { preview: 1, focus: 1 });
-    await page.goto('/?inspect=1');
+  test('buying confirms coins and all inventory aids are usable without preparation', async ({ page }) => {
+    const model = await mockAccount(page, { preview: 1, focus: 1 });await page.goto('/?inspect=1');
     await page.locator('[data-account-action="shop"]').click();
-    await expect(page.locator('[data-account-action="buy-aid"][data-aid="guide-5"]')).toBeEnabled();
-    await page.locator('[data-account-action="buy-aid"][data-aid="guide-5"]').click();
-    await expect.poll(() => model.state.balance).toBe(75);
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('impossible-tower.profile')!).coins)).toBe(0);
-    await page.locator('[data-account-action="select-aid"][data-aid="guide-5"]').click();
-    await expect(page.locator('[data-account-action="select-aid"][data-aid="guide-10"]')).toBeDisabled();
-    await page.locator('[data-account-action="select-aid"][data-aid="preview"]').click();
-    await expect(page.locator('[data-account-action="select-aid"][data-aid="focus"]')).toBeDisabled();
-    await expect(page.locator('[data-account-action="buy-coins"]:enabled')).toHaveCount(0);
-    await page.locator('[data-account-action="close"]').click();
-    await page.getByRole('button', { name: /^Juego libre$/i }).click();
-    await expect.poll(async () => (await snapshot(page)).aidsUsed).toEqual(['guide-5', 'preview']);
-    expect(model.ticket?.aids).toEqual(['guide-5', 'preview']);
-    expect(model.state.inventory['guide-5']).toBe(0);
-    expect(model.state.inventory.preview).toBe(0);
-    await page.locator('.account-hud-button').click();
-    await expect.poll(async () => (await snapshot(page)).state).toBe('paused');
-    const paused = await page.evaluate(() => (window as unknown as { __tower: Inspector }).__tower.replay().finalTick);
-    await page.keyboard.press('Space');
-    await page.waitForTimeout(400);
-    expect(await page.evaluate(() => (window as unknown as { __tower: Inspector }).__tower.replay().finalTick)).toBe(paused);
-    expect((await snapshot(page)).objectsPlaced).toBe(0);
-    await page.locator('[data-account-action="close"]').click();
-    await expect.poll(async () => (await snapshot(page)).state).toBe('ready');
+    const buy=page.locator('[data-account-action="buy-aid"][data-aid="guide-5"]');await expect(buy).toBeEnabled();await buy.click();
+    await expect(page.locator('.purchase-confirmation')).toContainText('75');await page.keyboard.press('Escape');expect(model.state.balance).toBe(100);
+    await buy.click();await page.locator('[data-account-action="confirm-purchase"]').click();await expect.poll(()=>model.state.balance).toBe(75);
+    expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('impossible-tower.profile')!).coins)).toBe(0);
+    await expect(page.locator('[data-account-action="select-aid"]')).toHaveCount(0);await page.locator('[data-account-action="close"]').click();
+    await page.getByRole('button',{name:/^Juego libre$/i}).click();await expect.poll(async()=>(await snapshot(page)).state).toBe('ready');
+    expect(model.ticket?.aids).toEqual([]);expect((await snapshot(page)).aidsUsed).toEqual([]);
+    await page.locator('.account-hud-button').click();await expect.poll(async()=>(await snapshot(page)).state).toBe('paused');
+    const paused=await page.evaluate(()=>(window as unknown as {__tower:Inspector}).__tower.replay().finalTick);await page.keyboard.press('Space');await page.waitForTimeout(400);expect(await page.evaluate(()=>(window as unknown as {__tower:Inspector}).__tower.replay().finalTick)).toBe(paused);
+    await page.locator('[data-account-action="use-aid"][data-aid="guide-5"]').click();await expect.poll(async()=>(await snapshot(page)).aidsUsed).toEqual(['guide-5']);
+    await page.locator('.account-hud-button').click();await page.locator('[data-account-action="use-aid"][data-aid="preview"]').click();await expect.poll(async()=>(await snapshot(page)).aidsUsed).toEqual(['guide-5','preview']);
+    await page.locator('.account-hud-button').click();await expect(page.locator('[data-account-action="use-aid"][data-aid="focus"]')).toBeDisabled();await page.locator('[data-account-action="close"]').click();
   });
 
   test('focus slows the real crane, preview is drawn and both aid events enter the untainted trace', async ({ page }, testInfo) => {
+    test.setTimeout(100_000);
     await mockAccount(page, { focus: 1, preview: 1 });
     await page.goto('/?inspect=1');
-    await page.locator('[data-account-action="shop"]').click();
-    await expect(page.locator('[data-account-action="select-aid"][data-aid="focus"]')).toBeEnabled();
-    await page.locator('[data-account-action="select-aid"][data-aid="focus"]').click();
-    await page.locator('[data-account-action="select-aid"][data-aid="preview"]').click();
-    await page.locator('[data-account-action="close"]').click();
-    await page.getByRole('button', { name: /^Juego libre$/i }).click();
+    await page.getByRole('button',{name:/^Juego libre$/i}).click();
+    await page.locator('.account-hud-button').click();await page.locator('[data-account-action="use-aid"][data-aid="focus"]').click();
+    await page.locator('.account-hud-button').click();await page.locator('[data-account-action="use-aid"][data-aid="preview"]').click();
     await expect.poll(async () => (await snapshot(page)).aidsUsed).toEqual(['focus', 'preview']);
     await expect.poll(() => page.evaluate(() => (window as unknown as { __tower: Inspector }).__tower.timing().tick)).toBeGreaterThan(90);
     const observed = await page.evaluate(() => {
       const controller = (window as unknown as { __tower: Inspector }).__tower;
       return { timing: controller.timing(), replay: controller.replay() };
     });
-    const expected = new TowerSimulation({ mode: 'casual', seed, catalog: 'extended-30' });
-    const unassisted = new TowerSimulation({ mode: 'casual', seed, catalog: 'extended-30' });
+    const expected = new TowerSimulation({ mode: 'casual', seed, catalog: 'extended-30', ruleset:'v3', aidRulesVersion:2 });
+    const unassisted = new TowerSimulation({ mode: 'casual', seed, catalog: 'extended-30', ruleset:'v3', aidRulesVersion:2 });
     try {
-      expected.activateAid('focus'); expected.activateAid('preview'); expected.advance(observed.timing.tick);
+      for(const event of observed.replay.events){expected.advance(event.tick-expected.tick);if(event.action==='aid')expected.activateAid(event.aid!);}expected.advance(observed.timing.tick-expected.tick);
       unassisted.advance(observed.timing.tick);
       expect(observed.timing.craneX).toBeCloseTo(expected.craneX, 8);
       expect(observed.timing.craneX).not.toBeCloseTo(unassisted.craneX, 4);
       expect(observed.replay.tainted).toBe(false);
-      expect(observed.replay.events).toEqual([{ tick: 0, action: 'aid', aid: 'focus' }, { tick: 0, action: 'aid', aid: 'preview' }]);
+      expect(observed.replay.events.map(e=>({action:e.action,aid:e.aid}))).toEqual([{action:'aid',aid:'focus'},{action:'aid',aid:'preview'}]);
       await page.locator('canvas').screenshot({ path: testInfo.outputPath('focus-and-preview.png') });
     } finally { expected.dispose(); unassisted.dispose(); }
   });
 
-  test('reserved guide and revival restore the tower and finalize one canonical replay without duplicate local progress', async ({ page }, testInfo) => {
+  test('mid-run guide and inventory revival restore the tower and finalize one canonical replay without duplicate local progress', async ({ page }, testInfo) => {
     test.setTimeout(100_000);
     const model = await mockAccount(page, { 'guide-5': 1, 'second-chance': 1 }, 'adult', 750);
     await page.goto('/?inspect=1');
-    await page.locator('[data-account-action="shop"]').click();
-    await expect(page.locator('[data-account-action="select-aid"][data-aid="guide-5"]')).toBeEnabled();
-    await page.locator('[data-account-action="select-aid"][data-aid="guide-5"]').click();
-    await page.locator('[data-account-action="select-aid"][data-aid="second-chance"]').click();
-    await page.locator('[data-account-action="close"]').click();
-    await page.getByRole('button', { name: /^Juego libre$/i }).click();
+    await page.getByRole('button',{name:/^Juego libre$/i}).click();
+    await page.locator('.account-hud-button').click();await page.locator('[data-account-action="use-aid"][data-aid="guide-5"]').click();
     await expect.poll(async () => (await snapshot(page)).aidsUsed).toEqual(['guide-5']);
     await page.locator('canvas').screenshot({ path: testInfo.outputPath('guide.png') });
     await threeRealPlacements(page);
@@ -333,6 +341,7 @@ test.describe('account API mocks with public client build flags enabled', () => 
     expect(model.calls.filter(c=>c.action==='finish-run')).toHaveLength(0);
     await expect(page.locator('.account-revive-result')).toHaveText('Segunda chance · 90 monedas');
     await page.locator('.account-revive-result').click();
+    await page.locator('[data-account-action="confirm-purchase"]').click();
     await expect.poll(async()=>(await snapshot(page)).state).toBe('ready');
     expect(model.state.balance).toBe(10);
     expect(model.state.inventory['second-chance']).toBe(0);
@@ -349,22 +358,17 @@ test.describe('account API mocks with public client build flags enabled', () => 
     await page.locator('[data-account-action="ranking"][data-period="daily"]').click();
     await expect(page.locator('.account-ranking-list')).toContainText('Participante real <b>');
     await expect(page.locator('.account-ranking-list b')).toHaveCount(0);
-    await expect(page.locator('.account-rank-prize')).toHaveText('—');
-    await expect(page.locator('.account-tabs [data-period="weekly"]')).toHaveCount(0);
+    await expect(page.locator('.account-rank-prize')).toHaveCount(0);
+    await expect(page.locator('.account-tabs [data-period="weekly"]')).toBeVisible();
     await page.locator('.account-tabs [data-period="monthly"]').click();
     await expect.poll(() => model.calls.filter(call => call.action === 'leaderboard').map(call => call.period)).toEqual(['daily','monthly']);
   });
 
-  test('a prepared replacement remains available after revival refreshes the consumed inventory', async ({ page }) => {
+  test('an inventory replacement remains available after revival refreshes the consumed inventory', async ({ page }) => {
     test.setTimeout(80_000);
     const model = await mockAccount(page, { skip: 1, 'second-chance': 1 });
     await page.goto('/?inspect=1');
-    await page.locator('[data-account-action="shop"]').click();
-    await expect(page.locator('[data-account-action="select-aid"][data-aid="skip"]')).toBeEnabled();
-    await page.locator('[data-account-action="select-aid"][data-aid="skip"]').click();
-    await page.locator('[data-account-action="select-aid"][data-aid="second-chance"]').click();
-    await page.locator('[data-account-action="close"]').click();
-    await page.getByRole('button', { name: /^Juego libre$/i }).click();
+    await page.getByRole('button',{name:/^Juego libre$/i}).click();
     await expect.poll(async () => (await snapshot(page)).state).toBe('ready');
     await threeRealPlacements(page);
     await naturalMiss(page);

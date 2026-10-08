@@ -36,7 +36,7 @@ function stringIds(value: unknown): string[] {
 export function defaultProfile(): Profile {
   return {
     version: 2,
-    economyVersion:3, badgeProgress:Object.fromEntries(BADGES.map(b=>[b.id,0])), missionDay:new Date().toISOString().slice(0,10), legacyDailyBest:0,
+    economyVersion:3, badgeCatalogVersion:2,badgeMetrics:{},badgeObjects:[],badgeLastDaily:'', badgeProgress:Object.fromEntries(BADGES.map(b=>[b.id,0])), missionDay:new Date().toISOString().slice(0,10), legacyDailyBest:0,
     personalBest: 0,
     bestScore: 0,
     coins: 0,
@@ -63,7 +63,11 @@ export function migrateProfile(raw: unknown): Profile {
   profile.bestScore = positive(source.bestScore, 0, true);
   profile.coins = 0; // Premium balance only exists on the server, including migrated profiles.
   profile.legacyDailyBest=positive(source.legacyDailyBest);
-  profile.badgeProgress=Object.fromEntries(BADGES.map(b=>[b.id,Math.min(b.target,positive(record(source.badgeProgress)[b.id]))]));
+  const currentBadges=source.badgeCatalogVersion===2;
+  profile.badgeMetrics=currentBadges?Object.fromEntries(Object.entries(record(source.badgeMetrics)).map(([k,v])=>[k,positive(v)])):{};
+  profile.badgeObjects=currentBadges?stringIds(source.badgeObjects).slice(0,30):[];
+  profile.badgeLastDaily=currentBadges&&isUTCDate(source.badgeLastDaily)?source.badgeLastDaily:'';
+  profile.badgeProgress=Object.fromEntries(BADGES.map(b=>[b.id,Math.min(b.target,positive(currentBadges?record(source.badgeProgress)[b.id]:0))]));
   profile.missionDay=typeof source.missionDay==='string'&&isUTCDate(source.missionDay)?source.missionDay:profile.missionDay;
   profile.sessionCount = positive(source.sessionCount, 0, true);
   profile.runs = positive(source.runs, 0, true);
@@ -86,7 +90,7 @@ export function migrateProfile(raw: unknown): Profile {
     const value = settings[key] ?? (key === 'sfx' ? settings.sound : undefined);
     if (typeof value === 'boolean') profile.settings[key] = value;
   }
-  profile.achievements = [...new Set(stringIds(source.achievements).filter((id) => achievementIds.has(id)))];
+  profile.achievements = [...new Set(stringIds(currentBadges?source.achievements:[]).filter((id) => achievementIds.has(id)))];
   for(const badge of BADGES)if(profile.achievements.includes(badge.id))profile.badgeProgress![badge.id]=badge.target;
 
   const missions = record(source.missions);
@@ -107,7 +111,7 @@ export function migrateProfile(raw: unknown): Profile {
       attempts: positive(daily.attempts, 0, true),
     };
   }
-  if(source.economyVersion!==3)profile.legacyDailyBest=Math.max(profile.legacyDailyBest??0,...Object.values(profile.daily).map(d=>d.best));
+  if(source.economyVersion!==3){profile.legacyDailyBest=Math.max(profile.legacyDailyBest??0,...Object.values(profile.daily).map(d=>d.best));profile.daily={};}
   profile.lastDailyDate = isUTCDate(source.lastDailyDate) ? source.lastDailyDate : '';
   profile.dailyStreak = profile.lastDailyDate ? positive(source.dailyStreak, 0, true) : 0;
   if (typeof source.publicName === 'string') {

@@ -12,7 +12,11 @@ async function paypal<T>(path: string, method = 'GET', body?: unknown, requestId
   if (!auth.ok) throw new ApiError(503, 'PayPal no respondió.');
   const token = await auth.json() as { access_token: string };
   const response = await fetch(`${paypalBase()}${path}`, { method, headers: { Authorization: `Bearer ${token.access_token}`, 'Content-Type': 'application/json', ...(requestId ? { 'PayPal-Request-Id': requestId } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000) });
-  if (!response.ok) throw new ApiError(503, 'PayPal no pudo completar la operación.');
+  if (!response.ok) {
+    const error=await response.json().catch(()=>({})) as Json;
+    if(error.details?.some((detail:Json)=>detail.issue==='INSTRUMENT_DECLINED'))throw new ApiError(409,'PayPal rechazó el medio de pago. Volvé a la tienda y elegí otro medio.');
+    throw new ApiError(503,'PayPal no pudo completar la operación.');
+  }
   return response.json() as Promise<T>;
 }
 function providerId(value: unknown): string { if (typeof value !== 'string' || !/^[A-Z0-9]{8,40}$/.test(value)) throw new ApiError(400, 'Pago inválido.'); return value; }
@@ -42,7 +46,10 @@ export async function captureOrder(db: SupabaseClient, userId: string, orderId: 
     const captureId = current.purchase_units?.[0]?.payments?.captures?.[0]?.id;
     await recordCapture(db, await captureDetails(providerId(captureId)), current);
   }
-  return rpc(db, 'snapshot', userId);
+  const snapshot=await rpc<Json>(db,'snapshot',userId);
+  // A refund webhook may have reconciled the order while capture was in flight.
+  const reconciled=await rpc<Json>(db,'paypal-find',userId,{orderId:id});
+  return {...snapshot,paymentStatus:reconciled.status==='created'?'paid':reconciled.status};
 }
 async function captureDetails(id: string): Promise<Json> { return paypal(`/v2/payments/captures/${providerId(id)}`); }
 async function verifiedOrder(db: SupabaseClient, capture: Json, providerOrder?: Json): Promise<Json> {

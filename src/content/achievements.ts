@@ -1,17 +1,31 @@
 import type { Achievement } from '../types';
+import type { AidId } from './economy';
 
-export const ACHIEVEMENTS: Achievement[] = [
-  { id: 'first-stack', name: 'Primer ladrillo', description: 'Apilá tu primer objeto.', target: 1, metric: 'objectsPlaced' },
-  { id: 'fifty-meters', name: 'Mirador', description: 'Alcanzá los 50 metros.', target: 50, metric: 'height' },
-  { id: 'hundred-meters', name: 'Cien y contando', description: 'Alcanzá los 100 metros.', target: 100, metric: 'height' },
-  { id: 'perfect-five', name: 'Mano firme', description: 'Conseguí un combo de 5 Perfect.', target: 5, metric: 'maxPerfectCombo' },
-  { id: 'perfect-ten', name: 'Precisión imposible', description: 'Conseguí un combo de 10 Perfect.', target: 10, metric: 'maxPerfectCombo' },
-  { id: 'rocket-scientist', name: 'Ciencia de cohetes', description: 'Apilá un cohete.', target: 1, metric: 'rocket' },
-  { id: 'cloud-toucher', name: 'Entre nubes', description: 'Alcanzá los 150 metros.', target: 150, metric: 'height' },
-  { id: 'chaos-master', name: 'Domador del caos', description: 'Alcanzá los 200 metros.', target: 200, metric: 'height' },
-  { id: 'daily-regular', name: 'Tres amaneceres', description: 'Jugá el Daily Tower tres días seguidos.', target: 3, metric: 'dailyStreak' },
-  { id: 'challenge-victory', name: 'Desafío superado', description: 'Superá la altura de un desafío.', target: 1, metric: 'challengeWon' },
+export const BADGE_CATALOG_VERSION = 2;
+export type BadgeTier = 'bronze' | 'silver' | 'gold';
+export interface BadgeReward { coins:number; items:Partial<Record<AidId,number>>; }
+export interface BadgeFamily { id:string; name:string; description:string; metric:string; targets:readonly [number,number,number]; rewards:readonly [BadgeReward,BadgeReward]; }
+const coins = (amount:number):BadgeReward => ({coins:amount,items:{}});
+const aid = (id:AidId):BadgeReward => ({coins:0,items:{[id]:1}});
+const money = [coins(5),coins(10)] as const;
+export const BADGE_FAMILIES:readonly BadgeFamily[] = [
+ {id:'stack',name:'Primer ladrillo',description:'Objetos en una torre',metric:'objectsPlaced',targets:[1,10,25],rewards:[aid('preview'),aid('guide-5')]},
+ {id:'height',name:'Mirador',description:'Altura máxima',metric:'height',targets:[30,75,150],rewards:money},
+ {id:'combo',name:'Mano firme',description:'Combo Perfect',metric:'maxPerfectCombo',targets:[3,5,10],rewards:money},
+ {id:'perfects',name:'Precisión imposible',description:'Perfect acumulados',metric:'totalPerfect',targets:[10,50,200],rewards:[aid('focus'),aid('skip')]},
+ {id:'runs',name:'Una torre más',description:'Torres con al menos 5 objetos',metric:'qualifyingRuns',targets:[5,25,100],rewards:[aid('guide-5'),aid('guide-10')]},
+ {id:'objects',name:'Domador del caos',description:'Objetos acumulados',metric:'totalObjects',targets:[25,150,750],rewards:[aid('guide-5'),aid('focus')]},
+ {id:'daily-days',name:'Amaneceres',description:'Días con Daily válido',metric:'dailyDays',targets:[3,10,30],rewards:money},
+ {id:'streak',name:'Sin perder el ritmo',description:'Racha de Daily válido',metric:'dailyStreak',targets:[3,7,14],rewards:money},
+ {id:'rockets',name:'Ciencia de cohetes',description:'Cohetes colocados',metric:'rockets',targets:[1,5,15],rewards:[aid('preview'),aid('skip')]},
+ {id:'variety',name:'Coleccionista imposible',description:'Tipos de objetos colocados',metric:'uniqueObjects',targets:[5,15,25],rewards:[aid('preview'),aid('focus')]},
+ {id:'weekly-podium',name:'Podio semanal',description:'Podios semanales definitivos',metric:'weeklyPodium',targets:[1,3,6],rewards:money},
+ {id:'monthly-podium',name:'Podio mensual',description:'Podios mensuales definitivos',metric:'monthlyPodium',targets:[1,3,6],rewards:money},
 ];
-
-export const MONTHLY_BADGE:Achievement={id:'monthly-podium',name:'Podio mensual',description:'Terminá entre los tres primeros del ranking de práctica.',target:1,metric:'monthlyPodium'};
-export const BADGES=[...ACHIEVEMENTS,MONTHLY_BADGE];
+export const BADGE_TIERS = ['bronze','silver','gold'] as const;
+export const BADGES:Achievement[] = BADGE_FAMILIES.flatMap(family=>BADGE_TIERS.map((tier,index)=>({
+ id:`v2:${family.id}:${tier}`,family:family.id,tier,name:family.name,description:family.description,
+ metric:family.metric,target:family.targets[index],reward:index===0?undefined:family.rewards[index-1],
+})));
+export const ACHIEVEMENTS = BADGES;
+export const MONTHLY_BADGE = BADGES.find(b=>b.family==='monthly-podium'&&b.tier==='bronze')!;

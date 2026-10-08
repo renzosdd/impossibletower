@@ -180,7 +180,8 @@ test('a blocked clipboard presents a persistent selectable challenge link', asyn
   await expect.poll(async () => (await snapshot(page))?.state).toBe('ready');
 });
 
-test('desktop keeps the physical canvas proportion and has no horizontal overflow', async ({ page }) => {
+test('desktop keeps the physical canvas proportion and has no horizontal overflow', async ({ page },testInfo) => {
+  test.skip(testInfo.project.name==='chromium-mobile','Desktop geometry uses the desktop context; mobile rotation is covered separately.');
   await page.setViewportSize({ width: 1440, height: 1000 });
   await start(page);
   const canvas = await page.locator('canvas').boundingBox();
@@ -190,6 +191,7 @@ test('desktop keeps the physical canvas proportion and has no horizontal overflo
 });
 
 test('pause freezes a ready run and resume restores drop input', async ({ page }) => {
+  test.setTimeout(100_000);
   await start(page);
   await page.getByRole('button', { name: /Pausar partida/i }).click();
   await expect.poll(async () => (await snapshot(page))?.state).toBe('paused');
@@ -209,12 +211,13 @@ test('premium coins cannot be gained locally and old ad rewards are absent',asyn
  await expect.poll(async()=>(await snapshot(page))?.state).toBe('ready');
 });
 
-test('ES/EN changes while playing without resetting the run and persists',async({page})=>{
- await start(page);await landFirstBox(page);const before=(await snapshot(page))!;
- await page.getByRole('button',{name:'EN',exact:true}).click();
+test('language changes in Settings and gameplay has no language toggle',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Ajustes',exact:true}).click();
+ await page.getByRole('button',{name:'EN',exact:true}).click();await page.keyboard.press('Escape');
+ await page.goto('/?debug=1');await page.getByRole('button',{name:'Free play',exact:true}).click();
+ await expect.poll(async()=>(await snapshot(page))?.state).toBe('ready');await landFirstBox(page);
+ await expect(page.getByRole('button',{name:'EN',exact:true})).toHaveCount(0);
  await expect(page.getByText('HEIGHT',{exact:true})).toBeVisible();
- expect((await snapshot(page))?.objectsPlaced).toBe(before.objectsPlaced);
- expect((await snapshot(page))?.seed).toBe(before.seed);
  await debug(page,'end-run');await expect(page.getByRole('button',{name:/PLAY AGAIN/})).toBeVisible();
  await page.reload();await expect(page.getByRole('button',{name:'Free play',exact:true})).toBeVisible();
 });

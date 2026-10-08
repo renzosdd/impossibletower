@@ -1,17 +1,18 @@
 import { expect, test } from '@playwright/test';
 
-test('home keeps three hearts, separate invitations and one ranking shortcut', async ({ page }) => {
+test('home keeps three clickable hearts and one ranking shortcut', async ({ page }) => {
   await page.goto('/');
   const menu=page.locator('.menu-screen');
   await expect(menu.locator('.daily-heart')).toHaveCount(3);
   await expect(menu.locator('.daily-heart.is-full')).toHaveCount(3);
   await expect(menu.locator('.mode-card p,.attempt-summary,.prize-threshold,.identity-controls')).toHaveCount(0);
-  await expect(menu).not.toContainText(/Renueva en|Google requerido|20 participantes|Practicá y participá/);
+  await expect(menu).not.toContainText(/Google requerido|20 participantes|Practicá y participá/);
   await expect(menu.getByRole('button',{name:'Jugar como invitado',exact:true})).toHaveCount(0);
   await expect(menu.getByRole('button',{name:'Continuar con Google',exact:true})).toHaveCount(0);
   await expect(menu.locator('.menu-nav').getByRole('button',{name:'Ranking',exact:true})).toBeVisible();
   await expect(menu.locator('.mode-card [data-account-action="ranking"],.mode-card [data-action="invite"]')).toHaveCount(0);
-  await expect(menu.getByRole('button',{name:'Invitar amigos',exact:true})).toBeVisible();
+  await expect(menu.getByRole('button',{name:'Invitar amigos',exact:true})).toHaveCount(0);
+  await expect(menu.locator('.hearts-button')).toBeVisible();await expect(menu.locator('.renewal-timer')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
@@ -40,22 +41,22 @@ test('Free play offers both identities and guest selection enters practice', asy
   await expect(page.locator('dialog[open]')).toHaveCount(0);
 });
 
-test('mode dialogs translate immediately and Escape returns focus to the mode', async ({ page }) => {
+test('language is only in Settings, persists and Escape restores mode focus', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button',{name:'Juego libre',exact:true}).click();
-  await page.locator('dialog[open]').getByRole('button',{name:'EN',exact:true}).click();
-  await expect(page.getByRole('dialog',{name:'Free play',exact:true})).toContainText('Continue with Google');
-  await expect(page.locator('dialog[open]').getByRole('button',{name:'Play as guest',exact:true})).toBeVisible();
-  await expect(page.locator('.daily-hearts')).toHaveAttribute('aria-label','Lives available: 3');
-  await page.locator('dialog[open]').getByRole('button',{name:'ES',exact:true}).click();
-  await expect(page.locator('.daily-hearts')).toHaveAttribute('aria-label','Vidas disponibles: 3');
-  await page.locator('dialog[open]').getByRole('button',{name:'EN',exact:true}).click();
+  await expect(page.getByRole('button',{name:'EN',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Ajustes',exact:true}).click();
+  await page.getByRole('button',{name:'EN',exact:true}).click();
   await page.keyboard.press('Escape');
-  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  await page.getByRole('button',{name:'Free play',exact:true}).click();
+  await expect(page.getByRole('dialog',{name:'Free play',exact:true})).toContainText('Continue with Google');
+  await expect(page.getByRole('button',{name:'EN',exact:true})).toHaveCount(0);
+  await expect(page.locator('.daily-hearts')).toHaveAttribute('aria-label','Lives available: 3');
+  await page.keyboard.press('Escape');
   await expect(page.getByRole('button',{name:'Free play',exact:true})).toBeFocused();
+  await page.reload();await expect(page.getByRole('button',{name:'Free play',exact:true})).toBeVisible();
 });
 
-test('refill dialog exposes available ads and counts purchased extras without a timer', async ({ page }) => {
+test('refill dialog exposes available ads and counts purchased extras with a UTC timer', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(async()=>{
     const {Interface}=await import('/src/ui/Interface.ts');
@@ -75,8 +76,8 @@ test('refill dialog exposes available ads and counts purchased extras without a 
   await expect(dialog).toContainText('El anuncio no se completó.');
   await expect(dialog.locator('[data-action="ad-attempt"]')).toBeEnabled();
   await page.evaluate(()=>{const {ui,state}=(window as any).refillHarness;state.attempts.adAvailable=0;state.attempts.purchasedRemaining=5;ui.setAccount(state,false);ui.showDailyRefill();});
-  await expect(dialog.locator('[data-action="ad-attempt"]')).toHaveCount(0);
+  await expect(dialog.locator('[data-action="ad-attempt"]')).toBeDisabled();
   await expect(dialog.locator('.daily-hearts')).toHaveAttribute('aria-label','Vidas disponibles: 5');
   await expect(dialog.locator('.daily-extra')).toHaveText('+2');
-  await expect(dialog).not.toContainText(/Renueva en|\d+h \d+m/);
+  await expect(dialog.locator('.renewal-timer')).toBeVisible();
 });

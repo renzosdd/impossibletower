@@ -1,11 +1,13 @@
 # Impossible Tower
 
+**Implementación V4:** rediseño de pantallas, ayudas durante la partida, cinco misiones, insignias reclamables, Daily semanal/histórico, promociones y circuito PayPal. [Migración, configuración y validación](docs/V4-EXPERIENCE.md). Pendiente de validación aislada en staging y PayPal Sandbox; todavía sin despliegue V4 ni habilitación Live.
+
 **Entrega V3:** jugabilidad con física compartida, Google, un panel Daily/mensual, moneda del servidor, intentos y referidos. [Contratos, pruebas y activación](docs/V3-LAUNCH.md) es la referencia de esta entrega. Las secciones V1/V2 siguientes documentan compatibilidad histórica; sus recompensas y clasificaciones anteriores no se activan en V3.
 
 
 Un juego arcade de física para jugar con un dedo: soltá objetos desde una grúa y construí la torre más alta posible. La altura es la métrica principal; precisión y combos suman puntos. Los retos compartidos reproducen la misma secuencia de objetos.
 
-Los invitados pueden practicar con nombre público y competir en el mensual. Google conserva el saldo único del servidor y permite competir en Daily. Los servicios online requieren activación y verificación; anuncios y cobros permanecen apagados. Las monedas no se transfieren, retiran ni convierten a dinero.
+Los invitados pueden practicar con nombre público y competir en el mensual. Google conserva el saldo único del servidor y permite competir en Daily. El backend online está habilitado en producción desde el 8 de octubre de 2026 UTC; Google está habilitado y falta [completar la prueba de acceso real](docs/GOOGLE-LOGIN-SETUP.md). Anuncios y cobros permanecen apagados. Las monedas no se transfieren, retiran ni convierten a dinero.
 
 ## Stack y arquitectura
 
@@ -231,7 +233,7 @@ El reporte final de entrega indica qué comandos se ejecutaron y sus resultados.
 - Las colisiones usan formas convexas simplificadas; no toda la geometría de la ilustración.
 - El seed reproduce secuencia; la física completa puede variar entre dispositivos.
 - Sin backend hay progreso local y no hay ranking global ni percentil real.
-- Supabase `nmdesnqgpsbtcoluyajh` está conectado al mismo sitio Netlify: migraciones, Auth anónima y aislamiento HTTP verificados. `SUPABASE_SECRET_KEY` y `REPLAY_WORKER_SECRET` están guardadas como variables estándar autorizadas, sin marcado de secreto, disponibles en todos los alcances y contextos, incluidos previews; el código actual las lee en Functions. La cuenta y economía siguen apagadas y esperan SMTP/OTP real y replay alojado. No usar esas credenciales de producción para pruebas económicas en previews. Google H5 permanece apagado hasta aprobación y consentimiento.
+- Supabase `nmdesnqgpsbtcoluyajh` está conectado al mismo sitio Netlify: cuatro migraciones, Auth anónima y permisos económicos verificados. `SUPABASE_SECRET_KEY` y `REPLAY_WORKER_SECRET` están guardadas como variables estándar autorizadas, sin marcado de secreto, disponibles en todos los alcances y contextos, incluidos previews; el código actual las lee en Functions. Economía y rankings están habilitados solo en producción, con workers publicados. Google está habilitado con redirección OAuth verificada; falta completar el acceso interactivo y verificar una partida completa; [estado y pasos](docs/GOOGLE-LOGIN-SETUP.md). No usar esas credenciales de producción para pruebas económicas en previews. Google H5 permanece apagado hasta aprobación y consentimiento.
 - `/privacidad`, `/terminos` y `/reglas-ranking` contienen textos adaptados a Renzo Dogliotti y al funcionamiento implementado. Requieren revisión jurídica uruguaya antes de monetizar; no garantizan cobertura legal.
 - El adapter de anuncios es una integración preparada, sin verificación de inventario real.
 
